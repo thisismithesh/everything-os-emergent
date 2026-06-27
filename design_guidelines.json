@@ -1,0 +1,127 @@
+{
+  "theme_archetype": "Archetype 4 (Swiss & High-Contrast) - Modified for Creative Agency",
+  "theme_mode": "light",
+  "design_philosophy": "Objective, rigid structure but visually refined. High clarity for heavy daily use (8+ hours/day). Scannability beats decoration. Monochrome base with strategic functional color.",
+  "colors": {
+    "brand_primary": "#0A0A0A",
+    "brand_primary_hover": "#262626",
+    "brand_accent": "#2563EB",
+    "background": {
+      "app": "#FAFAFA",
+      "sidebar": "#FFFFFF",
+      "surface": "#FFFFFF",
+      "surface_hover": "#F4F4F5",
+      "surface_active": "#E4E4E7"
+    },
+    "border": {
+      "default": "#E4E4E7",
+      "subtle": "#F4F4F5",
+      "focus": "#0A0A0A"
+    },
+    "text": {
+      "primary": "#0A0A0A",
+      "secondary": "#52525B",
+      "tertiary": "#A1A1AA",
+      "inverse": "#FFFFFF"
+    },
+    "functional_status": {
+      "success_bg": "#D1FAE5",
+      "success_text": "#065F46",
+      "warning_bg": "#FEF3C7",
+      "warning_text": "#92400E",
+      "danger_bg": "#FEE2E2",
+      "danger_text": "#991B1B",
+      "info_bg": "#DBEAFE",
+      "info_text": "#1E40AF"
+    }
+  },
+  "typography": {
+    "heading_font": "Cabinet Grotesk",
+    "body_font": "General Sans",
+    "scales": {
+      "h1": "text-4xl tracking-tight font-black text-primary",
+      "h2": "text-2xl tracking-tight font-bold text-primary",
+      "h3": "text-xl tracking-tight font-bold text-primary",
+      "h4": "text-lg font-semibold text-primary",
+      "body": "text-base font-normal text-secondary leading-relaxed",
+      "body_small": "text-sm font-normal text-secondary",
+      "label_overline": "text-xs font-semibold tracking-widest uppercase text-tertiary"
+    }
+  },
+  "layout_spacing": {
+    "sidebar": "Fixed left sidebar, width 64 (16rem). Clean typography, subtle hover states.",
+    "header": "Top header with breadcrumbs and user profile. Sticky, backdrop-blur-md bg-white/80.",
+    "dashboard_grid": "Four-Core-Surface Layout. Top row for 4 KPI cards (col-span-1). Middle row for Gantt/Timeline (col-span-3) and workload/list (col-span-1).",
+    "spacing_scale": "Use generous internal padding. Cards: p-6. Tables: dense padding py-2 px-4. Dashboard gap: gap-6."
+  },
+  "components_design": {
+    "cards": {
+      "style": "Flat surface, no soft shadows. 1px solid border (border-default), rounded-md. Strict, structured look."
+    },
+    "buttons": {
+      "primary": "bg-brand_primary text-white hover:bg-brand_primary_hover rounded-md px-4 py-2 font-medium transition-colors",
+      "secondary": "bg-white border border-default text-primary hover:bg-surface_hover rounded-md px-4 py-2 font-medium transition-colors",
+      "ghost": "text-secondary hover:text-primary hover:bg-surface_hover rounded-md px-4 py-2 transition-colors"
+    },
+    "data_tables": {
+      "style": "Dense and scannable. Faint borders on rows, no vertical borders. Sticky header.",
+      "alignment": "Left-align text, right-align numbers/metrics. Avatar clusters for assignees."
+    },
+    "gantt_chart": {
+      "style": "Minimal density. Faint or removed vertical grid lines. Bars are flat, monochromatic tiles (use brand_accent or brand_primary) with rounded-sm. No 3D bevels.",
+      "behavior": "Progressive disclosure: hide dependency arrows until hovered. Keep timescale headers clean."
+    },
+    "kanban_board": {
+      "style": "Subtle column backgrounds (surface_hover). Cards are white, border-default, draggable. Use functional_status pills for priority/tags."
+    },
+    "status_pills": {
+      "style": "Rounded-full, text-xs font-medium px-2.5 py-0.5. Use functional_status colors."
+    }
+  },
+  "interactions_motion": {
+    "hover": "Instant or fast transitions (0.15s ease). No bouncy springs. Professional and snappy.",
+    "focus": "High contrast focus ring: focus:outline-none focus:ring-2 focus:ring-brand_primary focus:ring-offset-2"
+  },
+  "icons": {
+    "library": "@phosphor-icons/react",
+    "style": "Weight: 'regular' for standard UI, 'fill' for active states. Size 20px (w-5 h-5)."
+  },
+  "accessibility": {
+    "testing_ids": "All interactive elements MUST have data-testid attributes (e.g., data-testid='sidebar-projects-link').",
+    "contrast": "Text contrast must meet APCA/WCAG AA standards. Brand primary on white exceeds 10:1."
+  },
+  "media_urls": {
+    "logo": {
+      "url": "https://images.pexels.com/photos/31757550/pexels-photo-31757550.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Minimalist geometric black and white pattern for agency logo placeholder.",
+      "usage": "Use as a square logo mark in the top left of the sidebar."
+    },
+    "avatars": [
+      {
+        "url": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MjU2NTg3Nnww&ixlib=rb-4.1.0&q=85",
+        "role": "Manager"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MjU2NTg3Nnww&ixlib=rb-4.1.0&q=85",
+        "role": "Designer"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1607503873903-c5e95f80d7b9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHw0fHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MjU2NTg3Nnww&ixlib=rb-4.1.0&q=85",
+        "role": "Client"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MjU2NTg3Nnww&ixlib=rb-4.1.0&q=85",
+        "role": "Team Lead"
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Install @phosphor-icons/react for icons.",
+    "Use pure HTML/Tailwind for structural layout (sidebar + header), avoid overusing Shadcn layout components that constrain flexibility.",
+    "Implement the 'Four-Core-Surface' pattern for the dashboard: KPI summary at top, split view below with a prominent Timeline/Gantt chart.",
+    "Ensure the Gantt chart is extremely clean: minimal grid lines, flat bar colors, and text inside or next to bars.",
+    "Always use data-testid on buttons, inputs, links.",
+    "Do NOT use placeholder text or dummy image generation services like via.placeholder.com. Use the provided avatar and logo URLs.",
+    "Do NOT apply gradient backgrounds or heavy shadows. Keep the UI flat, crisp, and high-contrast."
+  ]
+}
