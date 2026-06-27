@@ -31,12 +31,22 @@ Build a project management for a design agency with team (regular team member, m
 - Fonts: Cabinet Grotesk (display) + General Sans (body) via Fontshare CDN
 
 ## P1/P2 backlog (next phases)
-- Inline edit + drag-drop kanban
-- File attachments + comments on tasks
-- Real-time updates (websocket or polling)
+- File attachments on tasks/projects (object storage)
+- Email notifications integration (Resend/SendGrid) layered onto in-app notif system
+- Real-time push via SSE or websocket (currently 20s polling for notifications)
 - Marketing, Sales, Company, Financials modules
-- Time tracking timer (start/stop) and timesheets
-- Notifications (email + in-app)
 - Two-factor auth, password reset flow
 - Invoicing + retainer hour tracking (decrement against allocated)
 - Calendar drag-to-create and recurring event materialization
+- Optimistic local updates on drag operations (reduce round-trips)
+
+## Phase 2 (delivered)
+- Comments on tasks + projects + events with @mentions (suggestions + parsing)
+- Per-user real-time timer with sidebar widget, auto-stops previous timer
+- Timesheets page with weekly view, KPIs, per-task aggregation, team scope for managers
+- Manual time entries from task drawer
+- In-app notifications (bell + dropdown + polling): task assigned, status changed, comment, mention, project status/health changed
+- HTML5 drag-and-drop Kanban (Tasks page + ProjectDetail) — persists status
+- Drag-to-edit Gantt bars (move + right-edge resize) on Projects + ProjectDetail task gantts
+- Task detail drawer (right-side panel) with inline edit, assignee toggles, time entries, comments
+- Sidebar wiring: notification bell in header, timer bar above profile
