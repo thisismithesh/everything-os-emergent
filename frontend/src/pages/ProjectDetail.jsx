@@ -162,9 +162,9 @@ export default function ProjectDetail() {
               <a href={`${process.env.REACT_APP_BACKEND_URL}/api/export/tasks.csv`} className="text-sm flex items-center gap-2 px-3 py-2 border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-surface-hover)]"><Download className="w-4 h-4" /> Export</a>
             </div>
             {tasks.length === 0 ? <Empty title="No tasks yet" /> : (
-              taskView === "list" ? <TaskList tasks={tasks} userById={userById} /> :
-              taskView === "kanban" ? <TaskKanban tasks={tasks} userById={userById} /> :
-              <TaskGantt tasks={tasks} />
+              taskView === "list" ? <TaskList tasks={tasks} userById={userById} onOpen={setDrawerTaskId} /> :
+              taskView === "kanban" ? <TaskKanban tasks={tasks} userById={userById} onOpen={setDrawerTaskId} updateStatus={updateTaskStatus} /> :
+              <TaskGantt tasks={tasks} onOpen={setDrawerTaskId} onPatch={patchTaskDates} />
             )}
           </>
         )}

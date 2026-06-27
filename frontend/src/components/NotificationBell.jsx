@@ -47,7 +47,8 @@ export default function NotificationBell() {
       load();
     }
   };
-  const markAll = async () => {
+  const markAll = async (e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
     // optimistic
     setData((d) => ({ ...d, unread: 0, items: d.items.map((x) => ({ ...x, read: true })) }));
     await api.post("/notifications/read-all").catch(() => {});
@@ -78,7 +79,7 @@ export default function NotificationBell() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-default)]">
             <div className="text-sm font-bold tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>Notifications</div>
             {data.unread > 0 && (
-              <button onClick={markAll} className="text-[10px] uppercase tracking-widest text-[var(--text-secondary)] hover:text-[var(--text-primary)]" data-testid="notif-mark-all-read">Mark all read</button>
+              <button onMouseDown={markAll} className="text-[10px] uppercase tracking-widest text-[var(--text-secondary)] hover:text-[var(--text-primary)]" data-testid="notif-mark-all-read">Mark all read</button>
             )}
           </div>
           <div className="max-h-[420px] overflow-y-auto">
