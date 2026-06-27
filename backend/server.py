@@ -1000,54 +1000,21 @@ app.add_middleware(
 )
 
 
-# ---------- Seed ----------
-SEED_TEAMS = [
-    {"name": "Design", "color": "#0A0A0A"},
-    {"name": "Engineering", "color": "#2563EB"},
-    {"name": "Strategy", "color": "#9333EA"},
-    {"name": "Operations", "color": "#16A34A"},
-]
-
+# ---------- Seed (login accounts only) ----------
 SEED_USERS = [
-    # admin
-    {"email": "admin@studio.com", "password": "admin123", "name": "Aanya Iyer",
-     "role": "leadership", "title": "Founder & Creative Director", "team": "Strategy",
-     "in_office": True, "joining_date": "2019-04-01", "birthday": "1986-09-12",
-     "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop"},
+    {"email": "admin@studio.com", "password": "admin123", "name": "Admin",
+     "role": "leadership", "title": "Founder", "in_office": True},
     {"email": "maya@studio.com", "password": "password123", "name": "Maya Sharma",
-     "role": "manager", "title": "Design Director", "team": "Design",
-     "in_office": True, "joining_date": "2020-06-15", "birthday": "1990-03-22",
-     "avatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop"},
+     "role": "manager", "title": "Design Director", "in_office": True},
     {"email": "arjun@studio.com", "password": "password123", "name": "Arjun Patel",
-     "role": "team", "title": "Senior Product Designer", "team": "Design",
-     "in_office": False, "joining_date": "2022-01-10", "birthday": "1993-11-04",
-     "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop"},
-    {"email": "leo@studio.com", "password": "password123", "name": "Leo Tanaka",
-     "role": "team", "title": "Brand Designer", "team": "Design",
-     "in_office": True, "joining_date": "2023-03-21", "birthday": "1995-07-18",
-     "avatar": "https://images.unsplash.com/photo-1607503873903-c5e95f80d7b9?w=200&h=200&fit=crop"},
-    {"email": "ira@studio.com", "password": "password123", "name": "Ira Mendoza",
-     "role": "team", "title": "Frontend Engineer", "team": "Engineering",
-     "in_office": False, "joining_date": "2022-09-01", "birthday": "1992-02-08",
-     "avatar": "https://images.unsplash.com/photo-1573497019418-b400bb3ab074?w=200&h=200&fit=crop"},
-    {"email": "noah@studio.com", "password": "password123", "name": "Noah Becker",
-     "role": "team", "title": "Strategist", "team": "Strategy",
-     "in_office": True, "joining_date": "2021-11-12", "birthday": "1988-05-30",
-     "avatar": "https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=200&h=200&fit=crop"},
-]
-
-SEED_CLIENTS = [
-    {"company": "Acme Beverages", "location": "Mumbai, IN",
-     "contacts": [{"name": "Rohan Mehta", "email": "rohan@acme.com", "phone": "+91 98765 43210", "role": "Marketing Head"}]},
-    {"company": "Northwind Health", "location": "Berlin, DE",
-     "contacts": [{"name": "Eva Koehler", "email": "eva@northwind.health", "phone": "+49 30 1234567", "role": "VP Product"}]},
-    {"company": "Lumen Studios", "location": "New York, US",
-     "contacts": [{"name": "Devon Park", "email": "devon@lumen.co", "phone": "+1 212 555 0142", "role": "Founder"}]},
+     "role": "team", "title": "Senior Designer", "in_office": True},
+    {"email": "client@acme.com", "password": "password123", "name": "Client Demo",
+     "role": "client", "title": "Client"},
 ]
 
 
 async def seed_db():
-    # Indexes
+    # Indexes (idempotent)
     await db.users.create_index("email", unique=True)
     await db.users.create_index("id", unique=True)
     await db.projects.create_index("id", unique=True)
@@ -1067,238 +1034,24 @@ async def seed_db():
     await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
     await db.notifications.create_index("id", unique=True)
 
-    # Teams
-    teams = {}
-    for t in SEED_TEAMS:
-        existing = await db.teams.find_one({"name": t["name"]})
-        if existing:
-            teams[t["name"]] = existing["id"]
-        else:
-            tid = new_id()
-            await db.teams.insert_one({"id": tid, **t, "created_at": now_utc().isoformat()})
-            teams[t["name"]] = tid
-
-    # Users
-    user_ids = {}
+    # Seed only the 4 login accounts. Idempotent: each is only created if missing.
     for u in SEED_USERS:
         existing = await db.users.find_one({"email": u["email"]})
         if existing:
-            user_ids[u["email"]] = existing["id"]
-            # ensure password is up-to-date with .env admin password
+            # Keep admin password in sync with .env if it changed.
             if u["email"] == "admin@studio.com":
                 env_pw = os.environ.get("ADMIN_PASSWORD", u["password"])
-                if not verify_password(env_pw, existing["password_hash"]):
+                if not verify_password(env_pw, existing.get("password_hash", "")):
                     await db.users.update_one({"id": existing["id"]},
                                               {"$set": {"password_hash": hash_password(env_pw)}})
             continue
-        uid = new_id()
         pw = os.environ.get("ADMIN_PASSWORD", "admin123") if u["email"] == "admin@studio.com" else u["password"]
-        doc = {"id": uid, **u, "password_hash": hash_password(pw),
+        doc = {"id": new_id(), **u, "password_hash": hash_password(pw),
                "created_at": now_utc().isoformat()}
         doc.pop("password")
         await db.users.insert_one(doc)
-        user_ids[u["email"]] = uid
 
-    # Clients
-    client_ids = {}
-    for c in SEED_CLIENTS:
-        existing = await db.clients.find_one({"company": c["company"]})
-        if existing:
-            client_ids[c["company"]] = existing["id"]
-            continue
-        cid = new_id()
-        await db.clients.insert_one({"id": cid, **c, "created_at": now_utc().isoformat()})
-        client_ids[c["company"]] = cid
-
-    # Client user — link to first client
-    acme_id = client_ids["Acme Beverages"]
-    if not await db.users.find_one({"email": "client@acme.com"}):
-        cuid = new_id()
-        await db.users.insert_one({
-            "id": cuid, "email": "client@acme.com",
-            "password_hash": hash_password("password123"),
-            "name": "Rohan Mehta", "role": "client", "client_id": acme_id,
-            "title": "Marketing Head — Acme Beverages",
-            "avatar": "https://images.unsplash.com/photo-1531427186611-ecfd6d936c79?w=200&h=200&fit=crop",
-            "created_at": now_utc().isoformat(),
-        })
-
-    # Projects (idempotent by name)
-    today = date.today()
-
-    def iso(d):
-        return d.isoformat()
-
-    seed_projects = [
-        {
-            "name": "Acme — Brand Refresh 2026",
-            "type": "billable_regular", "status": "in_progress",
-            "priority": "high", "health": "on_track",
-            "lead_source": "Referral", "brief": "Refresh visual identity, packaging, and brand guidelines.",
-            "scope": "Logo, palette, type system, packaging system, brand book.",
-            "client_id": client_ids["Acme Beverages"],
-            "start_date": iso(today - timedelta(days=20)),
-            "end_date": iso(today + timedelta(days=40)),
-            "service_deliverables": ["Brand Strategy", "Visual Identity", "Brand Guidelines", "Packaging"],
-            "teams_involved": [teams["Design"], teams["Strategy"]],
-            "members": [
-                {"user_id": user_ids["maya@studio.com"], "role": "Lead Designer"},
-                {"user_id": user_ids["arjun@studio.com"], "role": "Senior Designer"},
-                {"user_id": user_ids["leo@studio.com"], "role": "Brand Designer"},
-                {"user_id": user_ids["noah@studio.com"], "role": "Strategist"},
-            ],
-        },
-        {
-            "name": "Northwind — Patient App MVP",
-            "type": "billable_regular", "status": "in_progress",
-            "priority": "high", "health": "at_risk",
-            "lead_source": "Inbound", "brief": "Design + build MVP for patient companion app.",
-            "scope": "Product design, MVP frontend in React Native.",
-            "client_id": client_ids["Northwind Health"],
-            "start_date": iso(today - timedelta(days=35)),
-            "end_date": iso(today + timedelta(days=55)),
-            "service_deliverables": ["UX Research", "Product Design", "Frontend Build"],
-            "teams_involved": [teams["Design"], teams["Engineering"]],
-            "members": [
-                {"user_id": user_ids["arjun@studio.com"], "role": "Product Designer"},
-                {"user_id": user_ids["ira@studio.com"], "role": "Frontend Engineer"},
-            ],
-        },
-        {
-            "name": "Lumen — Always-On Retainer",
-            "type": "billable_retainer", "status": "in_progress",
-            "priority": "medium", "health": "on_track",
-            "lead_source": "Repeat client", "brief": "Ongoing creative retainer — 60h/month.",
-            "scope": "Campaign assets, social, web updates.",
-            "client_id": client_ids["Lumen Studios"],
-            "start_date": iso(today - timedelta(days=60)),
-            "end_date": iso(today + timedelta(days=300)),
-            "hours_allocated": 60,
-            "service_deliverables": ["Campaigns", "Social", "Web"],
-            "teams_involved": [teams["Design"]],
-            "members": [
-                {"user_id": user_ids["leo@studio.com"], "role": "Designer"},
-                {"user_id": user_ids["maya@studio.com"], "role": "Reviewer"},
-            ],
-        },
-        {
-            "name": "Studio — Website Refresh",
-            "type": "non_billable", "status": "planning",
-            "priority": "low", "health": "on_track",
-            "lead_source": "Internal", "brief": "Refresh our own website with new case studies.",
-            "scope": "Site IA, copy, design, dev.",
-            "client_id": None,
-            "start_date": iso(today + timedelta(days=10)),
-            "end_date": iso(today + timedelta(days=80)),
-            "service_deliverables": ["Site Design", "Site Build"],
-            "teams_involved": [teams["Design"], teams["Engineering"]],
-            "members": [
-                {"user_id": user_ids["ira@studio.com"], "role": "Engineer"},
-                {"user_id": user_ids["arjun@studio.com"], "role": "Designer"},
-            ],
-        },
-    ]
-    project_ids = {}
-    for p in seed_projects:
-        existing = await db.projects.find_one({"name": p["name"]})
-        if existing:
-            project_ids[p["name"]] = existing["id"]
-            continue
-        pid = new_id()
-        await db.projects.insert_one({
-            "id": pid, **p,
-            "share_token": secrets.token_urlsafe(16),
-            "public_enabled": True if "Acme" in p["name"] else False,
-            "created_at": now_utc().isoformat(),
-        })
-        project_ids[p["name"]] = pid
-
-    # Tasks
-    if await db.tasks.count_documents({}) == 0:
-        tasks = [
-            ("Acme — Brand Refresh 2026", "Audit existing brand", "Research", "done", 8, 7, -18, -12, user_ids["noah@studio.com"]),
-            ("Acme — Brand Refresh 2026", "Mood boards", "Design", "done", 12, 14, -10, -5, user_ids["leo@studio.com"]),
-            ("Acme — Brand Refresh 2026", "Logo concepts v1", "Design", "in_progress", 20, 12, -3, 5, user_ids["maya@studio.com"]),
-            ("Acme — Brand Refresh 2026", "Type system exploration", "Design", "todo", 16, 0, 5, 12, user_ids["arjun@studio.com"]),
-            ("Acme — Brand Refresh 2026", "Packaging system", "Design", "todo", 30, 0, 14, 30, user_ids["leo@studio.com"]),
-            ("Northwind — Patient App MVP", "User interviews", "Research", "done", 16, 18, -25, -15, user_ids["arjun@studio.com"]),
-            ("Northwind — Patient App MVP", "Information architecture", "Design", "in_progress", 12, 8, -10, 2, user_ids["arjun@studio.com"]),
-            ("Northwind — Patient App MVP", "Hi-fi screens — Onboarding", "Design", "in_progress", 18, 11, -5, 7, user_ids["arjun@studio.com"]),
-            ("Northwind — Patient App MVP", "Frontend setup", "Engineering", "todo", 8, 0, 5, 10, user_ids["ira@studio.com"]),
-            ("Northwind — Patient App MVP", "Build onboarding screens", "Engineering", "todo", 24, 0, 12, 26, user_ids["ira@studio.com"]),
-            ("Lumen — Always-On Retainer", "March social pack", "Design", "review", 10, 9, -2, 3, user_ids["leo@studio.com"]),
-            ("Lumen — Always-On Retainer", "Spring campaign visuals", "Design", "todo", 24, 0, 6, 18, user_ids["leo@studio.com"]),
-            ("Studio — Website Refresh", "Case study selection", "Strategy", "todo", 6, 0, 12, 18, user_ids["maya@studio.com"]),
-            ("Studio — Website Refresh", "New site IA", "Design", "todo", 10, 0, 16, 24, user_ids["arjun@studio.com"]),
-        ]
-        for pname, name, cat, status, est, spent, start_off, end_off, assignee in tasks:
-            await db.tasks.insert_one({
-                "id": new_id(),
-                "project_id": project_ids[pname],
-                "parent_task_id": None,
-                "name": name,
-                "estimated_hours": est, "time_spent": spent,
-                "original_deadline": iso(today + timedelta(days=end_off)),
-                "latest_deadline": iso(today + timedelta(days=end_off)),
-                "completion_date": iso(today + timedelta(days=end_off)) if status == "done" else None,
-                "category": cat, "status": status,
-                "assignees": [assignee],
-                "is_recurring": False,
-                "created_at": now_utc().isoformat(),
-            })
-
-        # A couple of recurring non-billable tasks
-        for name in ["Weekly studio standup", "Monthly portfolio update"]:
-            await db.tasks.insert_one({
-                "id": new_id(), "project_id": None, "parent_task_id": None,
-                "name": name, "estimated_hours": 1, "time_spent": 0,
-                "category": None, "status": "todo",
-                "assignees": [user_ids["maya@studio.com"]],
-                "is_recurring": True, "recurrence_rule": "weekly" if "Weekly" in name else "monthly",
-                "created_at": now_utc().isoformat(),
-            })
-
-    # Events
-    if await db.events.count_documents({}) == 0:
-        events = [
-            ("Kickoff — Acme Brand Refresh", -20, "10:00", "11:00", "Studio HQ", "project",
-             project_ids["Acme — Brand Refresh 2026"],
-             [user_ids["maya@studio.com"], user_ids["arjun@studio.com"], user_ids["leo@studio.com"]]),
-            ("Northwind weekly sync", 1, "15:00", "15:45", "Zoom", "project",
-             project_ids["Northwind — Patient App MVP"],
-             [user_ids["arjun@studio.com"], user_ids["ira@studio.com"]]),
-            ("All-hands", 3, "11:00", "12:00", "Studio HQ", "company", None,
-             [user_ids["admin@studio.com"], user_ids["maya@studio.com"], user_ids["arjun@studio.com"]]),
-            ("Studio offsite", 14, "09:00", "18:00", "Lonavala", "company", None,
-             [user_ids[u["email"]] for u in SEED_USERS]),
-        ]
-        for name, off, t1, t2, loc, typ, pid, atts in events:
-            await db.events.insert_one({
-                "id": new_id(), "name": name,
-                "date": iso(today + timedelta(days=off)),
-                "end_date": iso(today + timedelta(days=off)),
-                "time": t1, "end_time": t2, "location": loc,
-                "type": typ, "project_id": pid, "attendees": atts,
-                "created_at": now_utc().isoformat(),
-            })
-
-    # Leaves
-    if await db.leaves.count_documents({}) == 0:
-        leaves = [
-            (user_ids["arjun@studio.com"], 7, 9, "vacation"),
-            (user_ids["leo@studio.com"], 20, 22, "vacation"),
-            (user_ids["ira@studio.com"], -2, -1, "sick"),
-        ]
-        for uid, s_off, e_off, typ in leaves:
-            await db.leaves.insert_one({
-                "id": new_id(), "user_id": uid,
-                "start_date": iso(today + timedelta(days=s_off)),
-                "end_date": iso(today + timedelta(days=e_off)),
-                "type": typ, "note": None,
-                "created_at": now_utc().isoformat(),
-            })
-
-    log.info("Seed complete.")
+    log.info("Seed complete (login accounts only).")
 
 
 @app.on_event("startup")
