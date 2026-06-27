@@ -356,19 +356,21 @@ function TaskGantt({ tasks, onOpen, onPatch }) {
 function GanttRow({ task, colW, totalCols, left, width, dateAt, onOpen, onPatch }) {
   const [lp, setLp] = useState(left);
   const [wd, setWd] = useState(width);
+  const lpRef = useRef(left);
+  const wdRef = useRef(width);
   const drag = useRef(null);
 
-  useEffect(() => { setLp(left); setWd(width); }, [left, width]);
+  useEffect(() => { setLp(left); setWd(width); lpRef.current = left; wdRef.current = width; }, [left, width]);
 
   const onMouseDownMove = (e) => {
     e.stopPropagation();
-    drag.current = { mode: "move", startX: e.clientX, l0: lp, w0: wd };
+    drag.current = { mode: "move", startX: e.clientX, l0: lpRef.current, w0: wdRef.current };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   };
   const onMouseDownResize = (e) => {
     e.stopPropagation();
-    drag.current = { mode: "resize", startX: e.clientX, l0: lp, w0: wd };
+    drag.current = { mode: "resize", startX: e.clientX, l0: lpRef.current, w0: wdRef.current };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   };
@@ -378,10 +380,10 @@ function GanttRow({ task, colW, totalCols, left, width, dateAt, onOpen, onPatch 
     const cells = Math.round(dx / colW);
     if (drag.current.mode === "move") {
       const next = Math.max(0, Math.min(totalCols - drag.current.w0, drag.current.l0 + cells));
-      setLp(next);
+      lpRef.current = next; setLp(next);
     } else {
       const next = Math.max(1, Math.min(totalCols - drag.current.l0, drag.current.w0 + cells));
-      setWd(next);
+      wdRef.current = next; setWd(next);
     }
   };
   const onUp = async () => {
@@ -390,8 +392,8 @@ function GanttRow({ task, colW, totalCols, left, width, dateAt, onOpen, onPatch 
     if (!drag.current) return;
     const mode = drag.current.mode;
     drag.current = null;
-    const newStart = dateAt(lp);
-    const newEnd = dateAt(lp + wd - 1);
+    const newStart = dateAt(lpRef.current);
+    const newEnd = dateAt(lpRef.current + wdRef.current - 1);
     if (mode === "move") {
       await onPatch(task.id, { original_deadline: newStart, latest_deadline: newEnd });
     } else {

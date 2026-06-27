@@ -41,11 +41,18 @@ export default function NotificationBell() {
 
   const markRead = async (n) => {
     if (!n.read) {
+      // optimistic
+      setData((d) => ({ ...d, unread: Math.max(0, d.unread - 1), items: d.items.map((x) => x.id === n.id ? { ...x, read: true } : x) }));
       await api.post(`/notifications/${n.id}/read`).catch(() => {});
       load();
     }
   };
-  const markAll = async () => { await api.post("/notifications/read-all").catch(() => {}); load(); };
+  const markAll = async () => {
+    // optimistic
+    setData((d) => ({ ...d, unread: 0, items: d.items.map((x) => ({ ...x, read: true })) }));
+    await api.post("/notifications/read-all").catch(() => {});
+    load();
+  };
 
   return (
     <div className="relative" ref={ref}>

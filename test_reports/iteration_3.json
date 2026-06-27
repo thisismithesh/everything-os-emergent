@@ -1,0 +1,47 @@
+{
+  "summary": "Retest of two regressions from iteration_2.json. Fix #1 (Projects.jsx Gantt resize+move) is FULLY FIXED — resize persists new end_date, move persists new start+end after reload. Fix #1b (ProjectDetail.jsx task Gantt) is NOT FIXED — a NEW bug was introduced: the GanttRow's onPatch prop is never passed at the invocation site `<TaskGantt tasks={tasks} />` (line 167 of ProjectDetail.jsx), so on mouseup a runtime TypeError 'onPatch is not a function' is thrown and zero PATCH calls reach the backend. Fix #2 (NotificationBell mark-all-read) is NOT WORKING — clicking [data-testid='notif-mark-all-read'] does not remove the unread badge at 150ms, 300ms, 1.8s, or after a full reload, and /api/notifications/read-all does not appear to be called (backend unread still 6). The optimistic setData was added in code, but the click handler doesn't run end-to-end against the live UI. Regression smoke passes: admin Kanban DnD persists across reload, drawer Start/Stop timer creates a time entry visible on /timesheets.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "ProjectDetail.jsx TaskGantt invocation",
+        "issue": "Resizing or moving a task bar throws 'TypeError: onPatch is not a function at onUp'. Root cause: line 167 renders <TaskGantt tasks={tasks} /> without passing onPatch (and onOpen). TaskGantt forwards them to GanttRow, which calls onPatch on mouseup. As a result no PATCH /api/tasks/{id} is ever made; original_deadline/latest_deadline are unchanged after drag+reload. This is a brand new regression introduced together with the lpRef/wdRef fix.",
+        "selector": "[data-testid^='gantt-resize-'], [data-testid^='gantt-bar-']",
+        "priority": "HIGH"
+      },
+      {
+        "component": "NotificationBell.jsx mark-all-read",
+        "issue": "Even after Fix #2 added optimistic state update, [data-testid='notif-unread-count'] badge remains PRESENT at 150ms, 300ms, 1.8s, and after a full page reload. /api/notifications/read-all is not being hit (notifications.unread stayed at 6 after the click, confirmed via /api/notifications). The click on the mark-all-read button is either being suppressed or the dropdown is closing before the React onClick fires. Verified by the fact that the seeded 2 notifications (plus 4 existing) all persist with read=false post-click.",
+        "selector": "[data-testid='notif-mark-all-read']",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "ProjectDetail.jsx line 167: change `<TaskGantt tasks={tasks} />` to `<TaskGantt tasks={tasks} onPatch={patchTaskDates} onOpen={setDrawerTaskId} />` (or whatever drawer setter is used). Without onPatch wired, the task Gantt drag-edit cannot persist regardless of the lpRef/wdRef refactor.",
+    "NotificationBell.jsx markAll: the optimistic setData is in code but the badge is not clearing in the live UI. Investigate: (a) is mark-all-read button receiving the click? add a console.log at the top of markAll to confirm — current evidence (backend unread still 6 after reload) suggests the handler is not firing. Likely the dropdown is closing before React processes the click. Possible fixes: (1) attach onMouseDown={markAll} instead of onClick so it runs before the outside-mousedown handler; (2) call e.stopPropagation() and e.preventDefault() inside markAll; (3) on the dropdown container, stopPropagation for mousedown so the outside-click handler does not interpret an inside click as outside.",
+    "Optional cleanup: while you fix #1b, verify Projects.jsx onPatch path remains correct (it does — Projects.jsx wires onPatch correctly)."
+  ],
+  "critical_code_review_comments": [
+    "ProjectDetail.jsx GanttRow change is missing the corresponding prop-passing at the call site — this kind of regression would be caught by a single 'render task gantt + click bar' smoke test or by a TypeScript prop check.",
+    "NotificationBell.jsx mixes a document-level mousedown outside-click handler with onClick on inner buttons. Even when the inner element is contains(e.target), some focus/blur/portal flows can cause the dropdown to unmount before React's synthetic onClick is dispatched. Prefer onMouseDown for the action button OR scope the outside-click via mouseup.",
+    "Both fixes shipped without an explicit unit/smoke test — recommend adding a Playwright test that exercises (a) PATCH on resize and (b) badge clears after mark-all-read, so this class of bug doesn't reappear."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (40/40 pytest from iteration_2 still passing — no backend changes)",
+    "frontend": "~60% — Projects.jsx Gantt resize+move FIXED & persisted (✓). ProjectDetail task Gantt drag now throws onPatch-not-a-function (regression, ✗). NotificationBell mark-all-read still does not clear badge (✗). Regression: Kanban DnD ✓, Timer Start/Stop + Timesheets ✓."
+  },
+  "test_credentials": "admin@studio.com/admin123, arjun@studio.com/password123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Notification seeding was done by admin PATCHing one of Arjun's tasks (Type system exploration, b363b2c52f7f4f269e122bf4b3c02711) between review<->in_progress twice and restoring original status. No persistent test data created.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Tasks use field `assignees` (array of user ids), NOT assignee_id. To trigger notifications for Arjun, PATCH a task whose assignees array contains Arjun's id while authenticated as a DIFFERENT user (admin works). For Gantt regression test on ProjectDetail use colW=18 (different from Projects.jsx which uses ~28). Backend GET /api/tasks/{id} does NOT exist (405) — use GET /api/tasks?project_id=... and find by id. For the bell badge bug, the optimistic setData IS in the source but doesn't reflect in DOM after live click — strongly suspect outside-click mousedown handler closes dropdown before onClick fires. Suggested mitigation: switch button to onMouseDown or call e.stopPropagation() inside markAll.",
+  "rca of the issue": "1) ProjectDetail.jsx Gantt: GanttRow received the lpRef/wdRef fix but the wrapper TaskGantt is invoked as <TaskGantt tasks={tasks} /> at line 167 with no onPatch — so GanttRow's onUp calls onPatch(...) on undefined → 'onPatch is not a function'. Fix: pass onPatch={patchTaskDates} (and onOpen) at the JSX call site. 2) NotificationBell: markAll has the optimistic setData line, but the badge stays in DOM and backend unread count doesn't decrement after the click+reload — proving the click handler never executes in the rendered dropdown. Most probable cause is the document.mousedown outside-click listener firing first (mousedown precedes click) and either closing the dropdown so click's target is null, or React batching makes the onClick never reach React's dispatcher. Convert the button to onMouseDown={markAll} with e.stopPropagation()/preventDefault(), or stopPropagation on the dropdown container's mousedown, to ensure the action fires."
+}
