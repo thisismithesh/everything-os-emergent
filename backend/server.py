@@ -655,11 +655,22 @@ async def dashboard_gantt(user: dict = Depends(require_roles("leadership", "mana
 async def export_csv(resource: str, user: dict = Depends(get_current_user)):
     if resource not in ("projects", "tasks", "users", "clients", "events", "leaves"):
         raise HTTPException(status_code=404, detail="Unknown resource")
+    # Clients can only export their own projects + events; everything else is team-only.
+    if user["role"] == "client" and resource not in ("projects", "events"):
+        raise HTTPException(status_code=403, detail="Forbidden")
     if resource == "clients" and user["role"] not in ("leadership", "manager"):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     coll = getattr(db, resource)
-    rows = await coll.find({}, {"_id": 0}).to_list(5000)
+    flt = {}
+    if user["role"] == "client":
+        if resource == "projects":
+            flt = {"client_id": user.get("client_id")}
+        elif resource == "events":
+            owned = await db.projects.find({"client_id": user.get("client_id")}, {"id": 1, "_id": 0}).to_list(1000)
+            ids = [p["id"] for p in owned]
+            flt = {"$or": [{"type": "company"}, {"project_id": {"$in": ids}}]}
+    rows = await coll.find(flt, {"_id": 0}).to_list(5000)
     if not rows:
         rows = [{"info": "No data"}]
     headers = sorted({k for r in rows for k in r.keys()})
