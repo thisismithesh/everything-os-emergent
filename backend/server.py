@@ -252,6 +252,7 @@ class UserUpdate(BaseModel):
     birthday: Optional[str] = None
     avatar: Optional[str] = None
     role: Optional[Role] = None
+    client_id: Optional[str] = None
 
 # ---------- Auth endpoints ----------
 @api.post("/auth/register")

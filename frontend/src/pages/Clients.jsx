@@ -1,18 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import PageHeader from "@/components/layout/PageHeader";
 import api from "@/lib/api";
-import { Empty } from "@/components/ui-bits";
-import { Download, Plus, Search, Building2 } from "lucide-react";
+import { Empty, Avatar } from "@/components/ui-bits";
+import { Download, Plus, Search, Building2, UserPlus, X } from "lucide-react";
 
 export default function Clients() {
   const [clients, setClients] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [users, setUsers] = useState([]);
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [linkFor, setLinkFor] = useState(null);   // client object when "Link user" is open
 
   const load = () => Promise.all([
     api.get("/clients").then((r)=>setClients(r.data)).catch(()=>setClients([])),
     api.get("/projects").then((r)=>setProjects(r.data)).catch(()=>setProjects([])),
+    api.get("/users").then((r)=>setUsers(r.data)).catch(()=>setUsers([])),
   ]);
   useEffect(() => { load(); }, []);
 
@@ -22,6 +25,12 @@ export default function Clients() {
     projects.forEach((p)=> { if (p.client_id) { (m[p.client_id] = m[p.client_id] || []).push(p); } });
     return m;
   }, [projects]);
+  const clientUsersByClient = useMemo(() => {
+    const m = {};
+    users.filter((u)=>u.role === "client" && u.client_id).forEach((u)=> { (m[u.client_id] = m[u.client_id] || []).push(u); });
+    return m;
+  }, [users]);
+  const unlinkedClientUsers = useMemo(() => users.filter((u)=> u.role === "client" && !u.client_id), [users]);
 
   return (
     <>
@@ -43,6 +52,7 @@ export default function Clients() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {visible.map((c) => {
               const projs = projectsByClient[c.id] || [];
+              const linked = clientUsersByClient[c.id] || [];
               return (
                 <div key={c.id} className="bg-white border border-[var(--border-default)] rounded-md p-5" data-testid={`client-card-${c.id}`}>
                   <div className="flex items-start gap-3">
@@ -64,6 +74,35 @@ export default function Clients() {
                     <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold mb-1">Projects ({projs.length})</div>
                     <div className="text-xs text-[var(--text-secondary)]">{projs.map(p=>p.name).join(" · ") || "—"}</div>
                   </div>
+                  <div className="mt-4 pt-4 border-t border-[var(--border-subtle)]">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold">Client portal users ({linked.length})</div>
+                      <button onClick={()=>setLinkFor(c)} className="text-xs flex items-center gap-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)]" data-testid={`client-link-user-btn-${c.id}`}>
+                        <UserPlus className="w-3.5 h-3.5" /> Assign user
+                      </button>
+                    </div>
+                    {linked.length === 0 ? (
+                      <div className="text-xs text-[var(--text-tertiary)]">No client users yet. Assign one so the client can log in.</div>
+                    ) : (
+                      <ul className="space-y-1.5">
+                        {linked.map((u) => (
+                          <li key={u.id} className="flex items-center gap-2 text-sm" data-testid={`client-user-${u.id}`}>
+                            <Avatar user={u} size={20} />
+                            <div className="flex-1 min-w-0">
+                              <div className="truncate">{u.name}</div>
+                              <div className="text-[10px] text-[var(--text-tertiary)] truncate">{u.email}</div>
+                            </div>
+                            <button
+                              onClick={async ()=>{ await api.patch(`/users/${u.id}`, { client_id: null }).catch(()=>{}); load(); }}
+                              className="text-[var(--text-tertiary)] hover:text-red-600"
+                              title="Unlink from client"
+                              data-testid={`client-unlink-${u.id}`}
+                            ><X className="w-3.5 h-3.5" /></button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -71,6 +110,14 @@ export default function Clients() {
         )}
       </div>
       {showAdd && <AddClientModal onClose={()=>setShowAdd(false)} onSaved={load} />}
+      {linkFor && (
+        <LinkClientUserModal
+          client={linkFor}
+          unlinkedUsers={unlinkedClientUsers}
+          onClose={()=>setLinkFor(null)}
+          onSaved={()=>{ setLinkFor(null); load(); }}
+        />
+      )}
     </>
   );
 }
@@ -107,6 +154,84 @@ function AddClientModal({ onClose, onSaved }) {
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="px-3 py-2 rounded-md border border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)]">Cancel</button>
             <button type="submit" disabled={busy} className="px-4 py-2 bg-[var(--brand)] text-white rounded-md font-semibold hover:bg-[var(--brand-hover)] disabled:opacity-50" data-testid="client-save-btn">{busy?"Saving…":"Create"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+
+function LinkClientUserModal({ client, unlinkedUsers, onClose, onSaved }) {
+  const [mode, setMode] = useState(unlinkedUsers.length > 0 ? "existing" : "new");
+  const [pickedId, setPickedId] = useState("");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault(); setBusy(true); setErr("");
+    try {
+      if (mode === "existing") {
+        if (!pickedId) throw new Error("Pick a user");
+        await api.patch(`/users/${pickedId}`, { client_id: client.id });
+      } else {
+        await api.post("/auth/register", {
+          email, password, name, role: "client", client_id: client.id,
+        });
+      }
+      onSaved && onSaved();
+    } catch (e2) {
+      setErr(e2.response?.data?.detail || e2.message || "Failed");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" data-testid="link-client-user-modal">
+      <div className="bg-white rounded-md border border-[var(--border-default)] w-full max-w-md p-6">
+        <h3 className="text-xl font-black tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>Assign client user</h3>
+        <p className="text-sm text-[var(--text-secondary)] mt-1">Give <span className="font-semibold text-[var(--text-primary)]">{client.company}</span> access to their portal.</p>
+
+        <div className="mt-4 flex bg-[var(--bg-surface-hover)] rounded-md p-1 text-xs font-semibold">
+          <button type="button" onClick={()=>setMode("existing")}
+            className={`flex-1 px-3 py-1.5 rounded ${mode === "existing" ? "bg-white text-[var(--text-primary)] shadow-sm" : "text-[var(--text-secondary)]"}`}
+            data-testid="link-mode-existing">Existing user ({unlinkedUsers.length})</button>
+          <button type="button" onClick={()=>setMode("new")}
+            className={`flex-1 px-3 py-1.5 rounded ${mode === "new" ? "bg-white text-[var(--text-primary)] shadow-sm" : "text-[var(--text-secondary)]"}`}
+            data-testid="link-mode-new">Create new</button>
+        </div>
+
+        <form onSubmit={submit} className="mt-4 space-y-3 text-sm">
+          {mode === "existing" ? (
+            unlinkedUsers.length === 0 ? (
+              <div className="text-xs text-[var(--text-tertiary)] py-4 text-center border border-dashed border-[var(--border-default)] rounded-md">
+                No unlinked client users available. Switch to “Create new”.
+              </div>
+            ) : (
+              <select required value={pickedId} onChange={(e)=>setPickedId(e.target.value)} data-testid="link-existing-select"
+                className="w-full border border-[var(--border-default)] rounded-md px-3 py-2">
+                <option value="">— Select a client user —</option>
+                {unlinkedUsers.map((u)=> <option key={u.id} value={u.id}>{u.name} · {u.email}</option>)}
+              </select>
+            )
+          ) : (
+            <>
+              <input required value={name} onChange={(e)=>setName(e.target.value)} placeholder="Full name" data-testid="link-new-name"
+                className="w-full border border-[var(--border-default)] rounded-md px-3 py-2" />
+              <input required type="email" value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="Email" data-testid="link-new-email"
+                className="w-full border border-[var(--border-default)] rounded-md px-3 py-2" />
+              <input required type="password" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="Temporary password" data-testid="link-new-password"
+                className="w-full border border-[var(--border-default)] rounded-md px-3 py-2" />
+            </>
+          )}
+          {err && <div className="text-xs text-red-700">{String(err)}</div>}
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} className="px-3 py-2 rounded-md border border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)]">Cancel</button>
+            <button type="submit" disabled={busy} className="px-4 py-2 bg-[var(--brand)] text-white rounded-md font-semibold hover:bg-[var(--brand-hover)] disabled:opacity-50" data-testid="link-save-btn">
+              {busy ? "Saving…" : (mode === "existing" ? "Assign" : "Create & assign")}
+            </button>
           </div>
         </form>
       </div>
