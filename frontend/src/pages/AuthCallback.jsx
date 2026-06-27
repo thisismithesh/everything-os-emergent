@@ -24,7 +24,7 @@ export default function AuthCallback() {
         setReady(true);
         // strip hash
         window.history.replaceState(null, "", window.location.pathname);
-        const next = data.role === "client" ? "/projects" : "/calendar";
+        const next = data.role === "client" ? "/projects" : "/home";
         nav(next, { replace: true });
       } catch {
         nav("/login", { replace: true });

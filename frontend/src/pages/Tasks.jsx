@@ -5,16 +5,20 @@ import api from "@/lib/api";
 import { Avatar, AvatarStack, StatusPill, Empty } from "@/components/ui-bits";
 import { Plus, Download, Search, ChevronRight, ChevronDown } from "lucide-react";
 import TaskDetailDrawer from "@/components/TaskDetailDrawer";
+import { useAuth } from "@/contexts/AuthContext";
 
 const STATUSES = ["todo", "in_progress", "review", "blocked", "done"];
 
 export default function Tasks() {
+  const { user } = useAuth();
   const [tasks, setTasks] = useState([]);
   const [projects, setProjects] = useState([]);
   const [users, setUsers] = useState([]);
   const [filterProject, setFilterProject] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterAssignee, setFilterAssignee] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
+  const [mineOnly, setMineOnly] = useState(true);
   const [search, setSearch] = useState("");
   const [view, setView] = useState("list"); // list | kanban
   const [showAdd, setShowAdd] = useState(false);
@@ -38,13 +42,17 @@ export default function Tasks() {
 
   const visible = useMemo(() => {
     return tasks.filter((t) => {
+      if (mineOnly && user && !(t.assignees || []).includes(user.id)) return false;
       if (filterProject && t.project_id !== filterProject) return false;
       if (filterStatus && t.status !== filterStatus) return false;
       if (filterAssignee && !(t.assignees || []).includes(filterAssignee)) return false;
+      if (filterCategory && t.category !== filterCategory) return false;
       if (search && !t.name.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [tasks, filterProject, filterStatus, filterAssignee, search]);
+  }, [tasks, filterProject, filterStatus, filterAssignee, filterCategory, search, mineOnly, user]);
+
+  const categories = useMemo(() => Array.from(new Set(tasks.map((t)=>t.category).filter(Boolean))).sort(), [tasks]);
 
   const parentTasks = visible.filter((t) => !t.parent_task_id);
   const childrenOf = (id) => visible.filter((t) => t.parent_task_id === id);
@@ -71,6 +79,10 @@ export default function Tasks() {
 
       <div className="p-8 space-y-4">
         <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 px-3 py-2 rounded-md bg-white border border-[var(--border-default)] text-sm cursor-pointer">
+            <input type="checkbox" checked={mineOnly} onChange={(e)=>setMineOnly(e.target.checked)} data-testid="tasks-mine-only-toggle" />
+            <span>Only my tasks</span>
+          </label>
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tasks…"
@@ -85,12 +97,17 @@ export default function Tasks() {
           <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} data-testid="tasks-filter-status"
             className="text-sm border border-[var(--border-default)] rounded-md px-3 py-2 bg-white">
             <option value="">All statuses</option>
-            {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            {STATUSES.map((s) => <option key={s} value={s}>{s.replace("_"," ")}</option>)}
           </select>
           <select value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)} data-testid="tasks-filter-assignee"
             className="text-sm border border-[var(--border-default)] rounded-md px-3 py-2 bg-white">
             <option value="">All assignees</option>
             {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+          <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} data-testid="tasks-filter-category"
+            className="text-sm border border-[var(--border-default)] rounded-md px-3 py-2 bg-white">
+            <option value="">All categories</option>
+            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
 
@@ -105,11 +122,13 @@ export default function Tasks() {
                     <th className="px-4 py-2 w-8"></th>
                     <th className="px-4 py-2">Task</th>
                     <th className="px-4 py-2">Project</th>
+                    <th className="px-4 py-2">Category</th>
                     <th className="px-4 py-2">Assignees</th>
                     <th className="px-4 py-2">Status</th>
                     <th className="px-4 py-2 text-right">Est.</th>
                     <th className="px-4 py-2 text-right">Spent</th>
-                    <th className="px-4 py-2">Deadline</th>
+                    <th className="px-4 py-2">Original</th>
+                    <th className="px-4 py-2">Latest</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -155,27 +174,31 @@ function FragmentRow({ task, subs, open, setOpen, projectById, userById, updateS
           {t.is_recurring && <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)]">Recurring · {t.recurrence_rule}</div>}
         </td>
         <td className="px-4 py-3 text-[var(--text-secondary)]">{p?.name || <span className="text-[var(--text-tertiary)]">—</span>}</td>
+        <td className="px-4 py-3">{t.category ? <span className="text-xs px-2 py-0.5 rounded bg-[var(--bg-surface-hover)] uppercase tracking-widest font-semibold">{t.category}</span> : <span className="text-[var(--text-tertiary)]">—</span>}</td>
         <td className="px-4 py-3"><AvatarStack users={assignees} /></td>
         <td className="px-4 py-3">
-          <select value={t.status} onChange={(e) => updateStatus(t, e.target.value)} data-testid={`task-status-${t.id}`}
+          <select value={t.status} onChange={(e) => updateStatus(t, e.target.value)} data-testid={`task-status-${t.id}`} onClick={(e)=>e.stopPropagation()}
             className="bg-transparent text-xs font-medium border-0 focus:ring-1 focus:ring-[var(--brand)] rounded">
-            {["todo","in_progress","review","blocked","done"].map((s) => <option key={s} value={s}>{s}</option>)}
+            {["todo","in_progress","review","blocked","done"].map((s) => <option key={s} value={s}>{s.replace("_"," ")}</option>)}
           </select>
         </td>
         <td className="px-4 py-3 text-right tabular-nums text-[var(--text-secondary)]">{t.estimated_hours ?? "—"}h</td>
         <td className="px-4 py-3 text-right tabular-nums text-[var(--text-secondary)]">{t.time_spent ?? 0}h</td>
-        <td className="px-4 py-3 text-[var(--text-secondary)]">{t.latest_deadline || "—"}</td>
+        <td className="px-4 py-3 text-[var(--text-secondary)] text-xs">{t.original_deadline || "—"}</td>
+        <td className="px-4 py-3 text-[var(--text-secondary)] text-xs">{t.status === "done" ? (t.completion_date || t.latest_deadline || "—") : (t.latest_deadline || "—")}</td>
       </tr>
       {open && subs.map((s) => (
-        <tr key={s.id} className="border-b border-[var(--border-subtle)] bg-[var(--bg-surface-hover)]/30">
+        <tr key={s.id} className="border-b border-[var(--border-subtle)] bg-[var(--bg-surface-hover)]/30 cursor-pointer" onClick={()=>onOpen(s.id)} data-testid={`task-row-${s.id}`}>
           <td></td>
           <td className="px-4 py-2 pl-10 text-sm text-[var(--text-secondary)]">↳ {s.name}</td>
           <td></td>
+          <td className="px-4 py-2">{s.category ? <span className="text-xs px-2 py-0.5 rounded bg-white uppercase tracking-widest font-semibold">{s.category}</span> : <span className="text-[var(--text-tertiary)]">—</span>}</td>
           <td className="px-4 py-2"><AvatarStack users={(s.assignees||[]).map(id=>userById[id]).filter(Boolean)} /></td>
           <td className="px-4 py-2"><StatusPill status={s.status} /></td>
           <td className="px-4 py-2 text-right text-[var(--text-secondary)]">{s.estimated_hours ?? "—"}h</td>
           <td className="px-4 py-2 text-right text-[var(--text-secondary)]">{s.time_spent ?? 0}h</td>
-          <td className="px-4 py-2 text-[var(--text-secondary)]">{s.latest_deadline || "—"}</td>
+          <td className="px-4 py-2 text-[var(--text-secondary)] text-xs">{s.original_deadline || "—"}</td>
+          <td className="px-4 py-2 text-[var(--text-secondary)] text-xs">{s.latest_deadline || "—"}</td>
         </tr>
       ))}
     </>
@@ -239,12 +262,14 @@ function Kanban({ tasks, userById, projectById, updateStatus, onOpen }) {
   );
 }
 
-function AddTaskModal({ projects, users, onClose, onSaved }) {
+function AddTaskModal({ projects, users, onClose, onSaved, defaultProjectId, defaultParentTaskId, hideProjectSelect }) {
   const [name, setName] = useState("");
-  const [projectId, setProjectId] = useState("");
+  const [projectId, setProjectId] = useState(defaultProjectId || "");
   const [status, setStatus] = useState("todo");
   const [estimate, setEstimate] = useState(0);
-  const [deadline, setDeadline] = useState("");
+  const [originalDeadline, setOriginalDeadline] = useState("");
+  const [latestDeadline, setLatestDeadline] = useState("");
+  const [category, setCategory] = useState("");
   const [assignees, setAssignees] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -254,7 +279,10 @@ function AddTaskModal({ projects, users, onClose, onSaved }) {
       await api.post("/tasks", {
         name, project_id: projectId || null, status,
         estimated_hours: Number(estimate) || 0,
-        original_deadline: deadline || null, latest_deadline: deadline || null,
+        original_deadline: originalDeadline || null,
+        latest_deadline: latestDeadline || originalDeadline || null,
+        category: category || null,
+        parent_task_id: defaultParentTaskId || null,
         assignees,
       });
       onSaved && onSaved(); onClose();
@@ -264,27 +292,38 @@ function AddTaskModal({ projects, users, onClose, onSaved }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
       <div className="bg-white rounded-md border border-[var(--border-default)] w-full max-w-lg p-6">
-        <h3 className="text-xl font-black tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>New task</h3>
+        <h3 className="text-xl font-black tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>{defaultParentTaskId ? "New subtask" : "New task"}</h3>
         <form onSubmit={submit} className="mt-4 space-y-3 text-sm">
           <input required value={name} onChange={(e)=>setName(e.target.value)} placeholder="Task name" data-testid="task-name-input"
             className="w-full border border-[var(--border-default)] rounded-md px-3 py-2" />
           <div className="grid grid-cols-2 gap-2">
-            <select value={projectId} onChange={(e)=>setProjectId(e.target.value)} className="border border-[var(--border-default)] rounded-md px-3 py-2" data-testid="task-project-select">
-              <option value="">No project (recurring)</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            {!hideProjectSelect && (
+              <select value={projectId} onChange={(e)=>setProjectId(e.target.value)} className="border border-[var(--border-default)] rounded-md px-3 py-2" data-testid="task-project-select">
+                <option value="">No project (recurring)</option>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            )}
             <select value={status} onChange={(e)=>setStatus(e.target.value)} className="border border-[var(--border-default)] rounded-md px-3 py-2" data-testid="task-status-select">
-              {["todo","in_progress","review","blocked","done"].map(s=> <option key={s} value={s}>{s}</option>)}
+              {["todo","in_progress","review","blocked","done"].map(s=> <option key={s} value={s}>{s.replace("_"," ")}</option>)}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <input type="number" min="0" value={estimate} onChange={(e)=>setEstimate(e.target.value)} placeholder="Estimated hours" className="border border-[var(--border-default)] rounded-md px-3 py-2" data-testid="task-estimate-input" />
-            <input type="date" value={deadline} onChange={(e)=>setDeadline(e.target.value)} className="border border-[var(--border-default)] rounded-md px-3 py-2" data-testid="task-deadline-input" />
+          <input value={category} onChange={(e)=>setCategory(e.target.value)} placeholder="Category (e.g. Website Development)" data-testid="task-category-input"
+            className="w-full border border-[var(--border-default)] rounded-md px-3 py-2" />
+          <div className="grid grid-cols-3 gap-2">
+            <input type="number" min="0" step="0.25" value={estimate} onChange={(e)=>setEstimate(e.target.value)} placeholder="Estimated hours" className="border border-[var(--border-default)] rounded-md px-3 py-2" data-testid="task-estimate-input" />
+            <label className="block text-xs">
+              <span className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold">Original deadline</span>
+              <input type="date" value={originalDeadline} onChange={(e)=>setOriginalDeadline(e.target.value)} className="w-full border border-[var(--border-default)] rounded-md px-3 py-2 mt-1" data-testid="task-original-deadline-input" />
+            </label>
+            <label className="block text-xs">
+              <span className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold">Latest deadline</span>
+              <input type="date" value={latestDeadline} onChange={(e)=>setLatestDeadline(e.target.value)} className="w-full border border-[var(--border-default)] rounded-md px-3 py-2 mt-1" data-testid="task-latest-deadline-input" />
+            </label>
           </div>
           <div>
             <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold mb-1">Assignees</div>
             <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-              {users.map((u) => (
+              {users.filter(u=>u.role!=="client").map((u) => (
                 <button key={u.id} type="button" onClick={()=>toggle(u.id)}
                   className={`text-xs rounded-full px-2.5 py-1 border ${assignees.includes(u.id) ? "bg-[var(--brand)] text-white border-[var(--brand)]" : "bg-white text-[var(--text-secondary)] border-[var(--border-default)]"}`}>
                   {u.name}
@@ -295,10 +334,12 @@ function AddTaskModal({ projects, users, onClose, onSaved }) {
           {err && <div className="text-xs text-red-700">{String(err)}</div>}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="px-3 py-2 text-sm rounded-md border border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)]">Cancel</button>
-            <button type="submit" disabled={busy} className="px-4 py-2 text-sm bg-[var(--brand)] text-white rounded-md font-semibold hover:bg-[var(--brand-hover)] disabled:opacity-50" data-testid="task-save-btn">{busy?"Saving…":"Create"}</button>
+            <button type="submit" disabled={busy} className="px-4 py-2 text-sm bg-[var(--brand)] text-white rounded-md font-semibold hover:bg-[var(--brand-hover)] disabled:opacity-50" data-testid="task-save-btn">{busy?"Saving\u2026":"Create"}</button>
           </div>
         </form>
       </div>
     </div>
   );
 }
+
+export { AddTaskModal };

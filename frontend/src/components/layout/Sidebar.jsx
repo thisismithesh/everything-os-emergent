@@ -2,20 +2,20 @@ import { NavLink, useLocation } from "react-router-dom";
 import { TABS } from "@/contexts/AuthContext";
 import {
   Calendar, ListChecks, FolderKanban, Users, Building2, Megaphone,
-  Briefcase, Building, LayoutDashboard, Wallet, User as UserIcon, LogOut, Clock
+  Briefcase, Building, LayoutDashboard, Wallet, User as UserIcon, LogOut, Clock, Home as HomeIcon
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import NotificationBell from "@/components/NotificationBell";
 import TimerBar from "@/components/TimerBar";
 
 const ICONS = {
-  calendar: Calendar, tasks: ListChecks, timesheets: Clock, projects: FolderKanban, team: Users,
+  home: HomeIcon, calendar: Calendar, tasks: ListChecks, timesheets: Clock, projects: FolderKanban, team: Users,
   clients: Building2, marketing: Megaphone, sales: Briefcase, company: Building,
   dashboard: LayoutDashboard, financials: Wallet,
 };
 
 const GROUPS = [
-  ["calendar", "tasks", "timesheets", "projects"],
+  ["home", "calendar", "tasks", "timesheets", "projects"],
   ["team", "clients"],
   ["marketing", "sales", "company"],
   ["dashboard", "financials"],

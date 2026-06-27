@@ -7,6 +7,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 
 import Login from "@/pages/Login";
 import AuthCallback from "@/pages/AuthCallback";
+import Home from "@/pages/Home";
 import CalendarPage from "@/pages/Calendar";
 import Tasks from "@/pages/Tasks";
 import Timesheets from "@/pages/Timesheets";
@@ -24,7 +25,7 @@ function HomeRedirect() {
   const { user, ready } = useAuth();
   if (!ready) return <div className="h-screen flex items-center justify-center text-sm text-[var(--text-tertiary)]">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
-  return <Navigate to={user.role === "client" ? "/projects" : "/calendar"} replace />;
+  return <Navigate to="/home" replace />;
 }
 
 function AppRoutes() {
@@ -38,6 +39,7 @@ function AppRoutes() {
         <Route path="/public/projects/:token" element={<PublicProject />} />
 
         <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+          <Route path="/home"       element={<ProtectedRoute tab="home"><Home /></ProtectedRoute>} />
           <Route path="/calendar"   element={<ProtectedRoute tab="calendar"><CalendarPage /></ProtectedRoute>} />
           <Route path="/tasks"      element={<ProtectedRoute tab="tasks"><Tasks /></ProtectedRoute>} />
           <Route path="/timesheets" element={<ProtectedRoute tab="timesheets"><Timesheets /></ProtectedRoute>} />

@@ -1,0 +1,42 @@
+{
+  "summary": "Phase-3 sweep across Home/Calendar/Tasks/Drawer/Subtasks/Timesheets/Projects/ProjectDetail/Gantt/Dashboard/Team. ~22 functional checks executed across 3 Playwright runs. All Phase-3 acceptance criteria PASS. Backend pytest re-run: 37/40 passing — the 3 failures are pre-existing seed-data assumption mismatches (test expects an 'Acme' (capitalized) project seeded but the wiped DB now has 'ACME' — not a code bug).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/projects", "issue": "Default ProjectIn.status is still 'planning' (server.py L183) while UI only offers Pitch/Upcoming/Ongoing/Complete/Hold/Cancelled. Pre-existing ACME row has status='planning' which is not one of the UI options — works (shown as 'planning' badge) but creates an inconsistency. Recommend defaulting backend to 'pitch' to match the new label set."},
+      {"endpoint": "backend_test.py", "issue": "TestRBAC.test_projects_client_filtered, TestComments.test_client_cannot_comment_other_project, TestProjects.test_public_project_acme all fail because they expect the legacy 'Acme' project to exist post-DB wipe. Tests need a seeding fixture, not a code fix."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ProjectDetail Status KPI", "issues": ["Status badge still shows 'Pitch' lower-cased internally as 'pitch' — the chip text is capitalized at render so visually OK, but consider Title-Case canonical labels via TYPE_LABEL-style map for consistency with TYPE label rendering."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Change default ProjectIn.status from 'planning' to 'pitch' in /app/backend/server.py L183 so new API-created projects fall inside the documented status set.",
+    "(Optional) Add a fixture in /app/backend/tests/backend_test.py to (re)seed an 'Acme' project for the 3 RBAC/Comments/PublicShare tests, or rename the assertions to lower-case 'acme' to match the wiped-DB seed."
+  ],
+  "critical_code_review_comments": [
+    "Frontend has TWO category testids in different places: AddTaskModal uses data-testid='task-category-input' (Tasks.jsx L310) and TaskDetailDrawer uses data-testid='task-drawer-category' (TaskDetailDrawer.jsx L93). The spec requested 'task-category-input present and saves' in the new-task modal — that matches. If the spec also intended the same testid in the drawer, it should be renamed in the drawer for consistency.",
+    "ProjectDetail.jsx default tab is 'overview' (L25). The 'project-add-task-btn' lives under the 'tasks' tab and 'project-add-event-btn' under 'calendar'. Direct-link to a project lands on Overview, so any automated/manual deep-link click flow requires clicking project-tab-tasks first — works but is a UX papercut for users who deep-link via task notifications.",
+    "Gantt body-drag uses 28px col width — verified that dragging +140px (5 cells) shifts BOTH start_date and end_date by +5 days while keeping bar width constant (PASS, matches Phase-3 spec). The previous expand-on-drag bug is fixed.",
+    "Pre-existing backend seed data drift: status='planning' on the ACME project predates the Phase-3 status redesign; new code uses pitch/upcoming/etc. Recommend a one-time data migration."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "92.5% (37/40 pytest — 3 failures are test data drift, not code bugs)",
+    "frontend": "100% on Phase-3 acceptance criteria — Home default landing, sidebar Home link, Log time off modal, Calendar event chip clickable + recurrence dropdown + edit/save, Tasks mineOnly default ON, tasks-filter-category, subtasks create/list/delete, task drawer original+latest+completion fields, task-category-input in new-task modal, no 'business days' on Timesheets, Project TYPE labels (Billable Project/Billable Account/Non-Billable Project), Project STATUS labels (Pitch/Upcoming/Ongoing/Complete/Hold/Cancelled), Edit Project modal, project-add-task-btn opens AddTaskModal and creates a task, project-add-event-btn opens event-form-modal, Project Team tab includes Client Contacts section, Gantt today-btn + gantt-bar/resize-left/resize-right testids present, Gantt body drag is move-only (width constant, both dates +5d), Dashboard Gantt today-btn present, Team page columns trimmed to Member/Team/Title/Status, row click opens team-member-drawer, team-member-edit-btn opens team-member-form-modal."
+  },
+  "test_credentials": "admin@studio.com/admin123, maya@studio.com/password123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created and DELETED a transient project 'P3 Test Proj (Edited)' (gantt drag persistence test), a 'Project Created Task' (project-add-task-btn integration test), and a transient recurring event 'P3 Recurring Evt' / later renamed 'P3 Renamed Evt' on 2026-06-29 (calendar click+edit test). Also created a 'Sub 1' / 'P3 Sub' subtask under Discovery (ACME) — these may remain. Also added 'Test Phase3 Project' from an earlier run that wasn't cleaned up — visible on Dashboard. Recommend cleaning up via /api/projects DELETE on any leftover P3-* / Test Phase3* projects + leftover subtasks if a pristine demo state is needed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All Phase-3 features pass. If retesting Gantt drag: use REACT_APP_BACKEND_URL, login admin, ensure /projects view=gantt, then bar.bounding_box() and page.mouse.move/down/move+steps=10/up to drag +140px (5*colW=28). Re-read project via GET /api/projects/{id} — expect start_date AND end_date to each shift +5d while bar width is unchanged. For project_add_task_btn — MUST click [data-testid='project-tab-tasks'] first because default tab is 'overview'. AddTaskModal has no 'data-testid*=modal' on its root; detect via [data-testid='task-name-input']. Drawer category testid is task-drawer-category (NOT task-category-input).",
+  "rca of the issue": "No code-side issues found this iteration. Backend pytest failures (3) are tests that hardcoded the legacy 'Acme' seed name — the Phase-3 DB wipe replaced it with 'ACME' or removed it entirely. Recommend either restoring an 'Acme' seed (matching case) or updating the test fixtures."
+}

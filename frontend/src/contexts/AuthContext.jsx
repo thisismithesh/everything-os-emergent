@@ -49,6 +49,7 @@ export function useAuth() {
 
 // Role visibility helpers
 export const TABS = [
+  { key: "home",       label: "Home",        roles: ["leadership", "manager", "team", "client"] },
   { key: "calendar",   label: "Calendar",    roles: ["leadership", "manager", "team", "client"] },
   { key: "tasks",      label: "Tasks",       roles: ["leadership", "manager", "team"] },
   { key: "timesheets", label: "Timesheets",  roles: ["leadership", "manager", "team"] },

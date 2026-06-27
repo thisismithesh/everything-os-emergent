@@ -18,7 +18,7 @@ export default function Login() {
     setBusy(true);
     try {
       const u = await login(email, password);
-      const next = loc.state?.from || (u.role === "client" ? "/projects" : "/calendar");
+      const next = loc.state?.from || (u.role === "client" ? "/projects" : "/home");
       nav(next, { replace: true });
     } catch (e2) {
       setErr(formatError(e2));

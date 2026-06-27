@@ -79,7 +79,7 @@ export default function Timesheets() {
       <div className="p-8 space-y-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Kpi label="Week total" value={`${hours(weekTotal)}h`} />
-          <Kpi label="Daily avg" value={`${hours(weekTotal/5)}h`} sub="business days" />
+          <Kpi label="Daily avg" value={`${hours(weekTotal/5)}h`} />
           <Kpi label="Entries" value={entries.length} />
           <Kpi label="Tasks" value={new Set(entries.map((e)=>e.task_id)).size} />
         </div>

@@ -1,14 +1,23 @@
 // Small UI primitives used across pages.
 export function StatusPill({ status }) {
   const map = {
-    todo:        { bg: "#F4F4F5", fg: "#3F3F46", label: "To do" },
+    // Task statuses
+    todo:        { bg: "#E0E7FF", fg: "#3730A3", label: "To do" },
     in_progress: { bg: "#DBEAFE", fg: "#1E40AF", label: "In progress" },
     review:      { bg: "#FEF3C7", fg: "#92400E", label: "In review" },
     done:        { bg: "#D1FAE5", fg: "#065F46", label: "Done" },
     blocked:     { bg: "#FEE2E2", fg: "#991B1B", label: "Blocked" },
-    planning:    { bg: "#F4F4F5", fg: "#3F3F46", label: "Planning" },
-    on_hold:     { bg: "#FEF3C7", fg: "#92400E", label: "On hold" },
-    completed:   { bg: "#D1FAE5", fg: "#065F46", label: "Completed" },
+    // Project statuses (new)
+    pitch:       { bg: "#F4F4F5", fg: "#3F3F46", label: "Pitch" },
+    upcoming:    { bg: "#E0E7FF", fg: "#3730A3", label: "Upcoming" },
+    ongoing:     { bg: "#DBEAFE", fg: "#1E40AF", label: "Ongoing" },
+    complete:    { bg: "#D1FAE5", fg: "#065F46", label: "Complete" },
+    hold:        { bg: "#FEF3C7", fg: "#92400E", label: "Hold" },
+    cancelled:   { bg: "#FEE2E2", fg: "#991B1B", label: "Cancelled" },
+    // Legacy / fallback
+    planning:    { bg: "#F4F4F5", fg: "#3F3F46", label: "Pitch" },
+    on_hold:     { bg: "#FEF3C7", fg: "#92400E", label: "Hold" },
+    completed:   { bg: "#D1FAE5", fg: "#065F46", label: "Complete" },
   };
   const s = map[status] || { bg: "#F4F4F5", fg: "#3F3F46", label: status || "—" };
   return (

@@ -15,7 +15,7 @@ export default function ProtectedRoute({ children, tab }) {
   if (!user) return <Navigate to="/login" replace />;
   if (tab && !canSee(tab, user.role)) {
     // Redirect to first accessible page based on role
-    const fallback = user.role === "client" ? "/projects" : "/calendar";
+    const fallback = user.role === "client" ? "/projects" : "/home";
     return <Navigate to={fallback} replace />;
   }
   return children;

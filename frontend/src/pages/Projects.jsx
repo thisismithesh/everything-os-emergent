@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import GanttTimeline from "@/components/GanttTimeline";
 import { Link } from "react-router-dom";
 import PageHeader from "@/components/layout/PageHeader";
 import api from "@/lib/api";
@@ -7,10 +8,13 @@ import { Plus, Download, Search, LayoutGrid, List, Calendar as CalendarIcon } fr
 import { useAuth } from "@/contexts/AuthContext";
 
 const TYPE_LABEL = {
-  billable_regular: "Billable",
-  billable_retainer: "Retainer",
-  non_billable: "Non-billable",
+  billable_regular: "Billable Project",
+  billable_retainer: "Billable Account",
+  non_billable: "Non-Billable Project",
 };
+const PROJECT_STATUSES = ["pitch", "upcoming", "ongoing", "complete", "hold", "cancelled"];
+const PROJECT_HEALTHS = ["on_track", "at_risk", "off_track"];
+const PROJECT_PRIORITIES = ["high", "medium", "low"];
 
 export default function Projects() {
   const { user } = useAuth();
@@ -70,13 +74,13 @@ export default function Projects() {
           </div>
           <select value={filterType} onChange={(e)=>setFilterType(e.target.value)} className="text-sm border border-[var(--border-default)] rounded-md px-3 py-2 bg-white" data-testid="projects-filter-type">
             <option value="">All types</option>
-            <option value="billable_regular">Billable</option>
-            <option value="billable_retainer">Retainer</option>
-            <option value="non_billable">Non-billable</option>
+            <option value="billable_regular">Billable Project</option>
+            <option value="billable_retainer">Billable Account</option>
+            <option value="non_billable">Non-Billable Project</option>
           </select>
           <select value={filterStatus} onChange={(e)=>setFilterStatus(e.target.value)} className="text-sm border border-[var(--border-default)] rounded-md px-3 py-2 bg-white" data-testid="projects-filter-status">
             <option value="">All statuses</option>
-            {["planning","in_progress","review","on_hold","completed"].map(s=> <option key={s} value={s}>{s}</option>)}
+            {PROJECT_STATUSES.map(s=> <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
           </select>
         </div>
 
@@ -149,15 +153,26 @@ export default function Projects() {
             </table>
           </div>
         ) : (
-          <GanttView projects={visible} onPatch={async (pid, patch)=>{
-            const target = projects.find((x)=>x.id===pid);
-            if (!target) return;
-            const body = { ...target, ...patch };
-            // strip server-side fields
-            delete body.id; delete body.share_token; delete body.public_enabled; delete body.created_at;
-            await api.patch(`/projects/${pid}`, body).catch(()=>{});
-            load();
-          }} />
+          <GanttTimeline
+            rows={visible.filter((p)=>p.start_date && p.end_date).map((p) => ({
+              id: p.id,
+              label: p.name,
+              sublabel: TYPE_LABEL[p.type],
+              start: p.start_date,
+              end: p.end_date,
+              color: p.health === "on_track" ? "#0A0A0A" : p.health === "at_risk" ? "#F59E0B" : "#EF4444",
+              onClick: () => window.location.assign(`/projects/${p.id}`),
+            }))}
+            onPatch={async (pid, { start, end }) => {
+              const target = projects.find((x)=>x.id===pid);
+              if (!target) return;
+              const body = { ...target, start_date: start, end_date: end };
+              delete body.id; delete body.share_token; delete body.public_enabled; delete body.created_at;
+              await api.patch(`/projects/${pid}`, body).catch(()=>{});
+              load();
+            }}
+            emptyMessage="Projects need start and end dates to appear in the Gantt."
+          />
         )}
       </div>
 
@@ -166,169 +181,67 @@ export default function Projects() {
   );
 }
 
-function GanttView({ projects, onPatch }) {
-  // Build a date range across all projects
-  const dates = useMemo(() => {
-    const all = projects.flatMap((p) => [p.start_date, p.end_date].filter(Boolean));
-    if (all.length === 0) return [];
-    const min = new Date(all.reduce((a, b) => a < b ? a : b));
-    const max = new Date(all.reduce((a, b) => a > b ? a : b));
-    min.setDate(min.getDate() - 5);
-    max.setDate(max.getDate() + 5);
-    const days = [];
-    for (let d = new Date(min); d <= max; d.setDate(d.getDate()+1)) days.push(new Date(d));
-    return days;
-  }, [projects]);
-
-  if (dates.length === 0) return <Empty title="No timeline data" hint="Projects need start and end dates to appear in the Gantt." />;
-
-  const colW = 18;
-  const start = dates[0];
-  const idx = (iso) => {
-    const d = new Date(iso);
-    return Math.round((d - start) / (1000*60*60*24));
-  };
-  const dateAt = (i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d.toISOString().slice(0,10); };
-
-  // Tick every 7 days
-  return (
-    <div className="bg-white border border-[var(--border-default)] rounded-md overflow-x-auto">
-      <div className="min-w-fit">
-        <div className="flex sticky top-0 bg-white z-10 border-b border-[var(--border-default)]">
-          <div className="w-64 shrink-0 px-4 py-2 text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold border-r border-[var(--border-default)]">Project</div>
-          <div className="flex">
-            {dates.map((d, i) => (
-              <div key={i} className="text-[10px] text-[var(--text-tertiary)] text-center border-r border-[var(--border-subtle)] py-2" style={{ width: colW }}>
-                {d.getDate() === 1 || i === 0 ? d.toLocaleDateString(undefined, { month: "short" }) : (d.getDay() === 1 ? d.getDate() : "")}
-              </div>
-            ))}
-          </div>
-        </div>
-        {projects.map((p) => {
-          if (!p.start_date || !p.end_date) return null;
-          const s = idx(p.start_date);
-          const e = idx(p.end_date);
-          const w = Math.max(1, (e - s + 1));
-          return (
-            <ProjectGanttRow key={p.id} project={p} colW={colW} totalCols={dates.length} left={s} width={w} dateAt={dateAt} onPatch={onPatch} />
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ProjectGanttRow({ project, colW, totalCols, left, width, dateAt, onPatch }) {
-  const [lp, setLp] = useState(left);
-  const [wd, setWd] = useState(width);
-  const lpRef = useRef(left);
-  const wdRef = useRef(width);
-  const drag = useRef(null);
-
-  useEffect(() => { setLp(left); setWd(width); lpRef.current = left; wdRef.current = width; }, [left, width]);
-
-  const onMouseDownMove = (e) => {
-    e.preventDefault(); e.stopPropagation();
-    drag.current = { mode: "move", startX: e.clientX, l0: lpRef.current, w0: wdRef.current };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  };
-  const onMouseDownResize = (e) => {
-    e.preventDefault(); e.stopPropagation();
-    drag.current = { mode: "resize", startX: e.clientX, l0: lpRef.current, w0: wdRef.current };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  };
-  const onMove = (e) => {
-    if (!drag.current) return;
-    const dx = e.clientX - drag.current.startX;
-    const cells = Math.round(dx / colW);
-    if (drag.current.mode === "move") {
-      const next = Math.max(0, Math.min(totalCols - drag.current.w0, drag.current.l0 + cells));
-      lpRef.current = next; setLp(next);
-    } else {
-      const next = Math.max(1, Math.min(totalCols - drag.current.l0, drag.current.w0 + cells));
-      wdRef.current = next; setWd(next);
-    }
-  };
-  const onUp = async () => {
-    window.removeEventListener("mousemove", onMove);
-    window.removeEventListener("mouseup", onUp);
-    if (!drag.current) return;
-    const mode = drag.current.mode;
-    drag.current = null;
-    const newStart = dateAt(lpRef.current);
-    const newEnd = dateAt(lpRef.current + wdRef.current - 1);
-    if (mode === "move") {
-      await onPatch(project.id, { start_date: newStart, end_date: newEnd });
-    } else {
-      await onPatch(project.id, { end_date: newEnd });
-    }
-  };
-
-  return (
-    <div className="flex items-center border-b border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]">
-      <div className="w-64 shrink-0 px-4 py-3 border-r border-[var(--border-default)]">
-        <Link to={`/projects/${project.id}`} className="text-sm font-medium hover:underline">{project.name}</Link>
-        <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold mt-0.5">{TYPE_LABEL[project.type]}</div>
-      </div>
-      <div className="relative" style={{ width: totalCols * colW, height: 36 }} data-testid={`proj-gantt-track-${project.id}`}>
-        <div
-          className="absolute top-1/2 -translate-y-1/2 rounded-sm bg-[var(--accent)]"
-          style={{ left: lp*colW, width: wd*colW, height: 18, cursor: "grab" }}
-          onMouseDown={onMouseDownMove}
-          data-testid={`proj-gantt-bar-${project.id}`}
-        >
-          <div
-            onMouseDown={onMouseDownResize}
-            className="absolute right-0 top-0 bottom-0 w-2 rounded-r-sm bg-white/40 hover:bg-white/70"
-            style={{ cursor: "ew-resize" }}
-            data-testid={`proj-gantt-resize-${project.id}`}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AddProjectModal({ clients, users, onClose, onSaved }) {
-  const [name, setName] = useState("");
-  const [type, setType] = useState("billable_regular");
-  const [status, setStatus] = useState("planning");
-  const [priority, setPriority] = useState("medium");
-  const [health, setHealth] = useState("on_track");
-  const [clientId, setClientId] = useState("");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
-  const [brief, setBrief] = useState("");
-  const [members, setMembers] = useState([]);
+function AddProjectModal({ clients, users, onClose, onSaved, project }) {
+  const isEdit = !!project;
+  const [name, setName] = useState(project?.name || "");
+  const [type, setType] = useState(project?.type || "billable_regular");
+  const [status, setStatus] = useState(project?.status || "pitch");
+  const [priority, setPriority] = useState(project?.priority || "medium");
+  const [health, setHealth] = useState(project?.health || "on_track");
+  const [clientId, setClientId] = useState(project?.client_id || "");
+  const [start, setStart] = useState(project?.start_date || "");
+  const [end, setEnd] = useState(project?.end_date || "");
+  const [brief, setBrief] = useState(project?.brief || "");
+  const [scope, setScope] = useState(project?.scope || "");
+  const [leadSource, setLeadSource] = useState(project?.lead_source || "");
+  const [hoursAllocated, setHoursAllocated] = useState(project?.hours_allocated || "");
+  const [deliverables, setDeliverables] = useState((project?.service_deliverables || []).join(", "));
+  const [members, setMembers] = useState(project?.members || []);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const toggle = (id) => setMembers((a)=> a.find(m=>m.user_id===id) ? a.filter(m=>m.user_id!==id) : [...a, { user_id: id }]);
+
+  const memberObj = (uid) => members.find((m) => m.user_id === uid);
+  const toggleMember = (uid) => setMembers((a) =>
+    memberObj(uid) ? a.filter((m)=>m.user_id!==uid) : [...a, { user_id: uid, role: null }]);
+  const setMemberRole = (uid, role) => setMembers((a) =>
+    a.map((m) => m.user_id === uid ? { ...m, role } : m));
+
   const submit = async (e) => {
     e.preventDefault(); setBusy(true); setErr("");
+    const payload = {
+      name, type, status, priority, health,
+      client_id: clientId || null,
+      start_date: start || null, end_date: end || null,
+      brief: brief || null, scope: scope || null,
+      lead_source: leadSource || null,
+      hours_allocated: hoursAllocated ? Number(hoursAllocated) : null,
+      service_deliverables: deliverables ? deliverables.split(",").map((s)=>s.trim()).filter(Boolean) : [],
+      members,
+    };
     try {
-      await api.post("/projects", { name, type, status, priority, health, client_id: clientId||null, start_date: start||null, end_date: end||null, brief, members });
+      if (isEdit) await api.patch(`/projects/${project.id}`, payload);
+      else await api.post("/projects", payload);
       onSaved && onSaved(); onClose();
     } catch (e2) { setErr(e2.response?.data?.detail || "Failed"); } finally { setBusy(false); }
   };
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-md border border-[var(--border-default)] w-full max-w-xl p-6">
-        <h3 className="text-xl font-black tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>New project</h3>
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" data-testid="project-form-modal">
+      <div className="bg-white rounded-md border border-[var(--border-default)] w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <h3 className="text-xl font-black tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>{isEdit ? "Edit project" : "New project"}</h3>
         <form onSubmit={submit} className="mt-4 space-y-3 text-sm">
           <input required value={name} onChange={(e)=>setName(e.target.value)} placeholder="Project name" data-testid="project-name-input" className="w-full border border-[var(--border-default)] rounded-md px-3 py-2" />
           <div className="grid grid-cols-3 gap-2">
             <select value={type} onChange={(e)=>setType(e.target.value)} className="border border-[var(--border-default)] rounded-md px-3 py-2" data-testid="project-type-select">
-              <option value="billable_regular">Billable</option>
-              <option value="billable_retainer">Retainer</option>
-              <option value="non_billable">Non-billable</option>
+              <option value="billable_regular">Billable Project</option>
+              <option value="billable_retainer">Billable Account</option>
+              <option value="non_billable">Non-Billable Project</option>
             </select>
-            <select value={status} onChange={(e)=>setStatus(e.target.value)} className="border border-[var(--border-default)] rounded-md px-3 py-2">
-              {["planning","in_progress","review","on_hold","completed"].map(s=> <option key={s} value={s}>{s}</option>)}
+            <select value={status} onChange={(e)=>setStatus(e.target.value)} className="border border-[var(--border-default)] rounded-md px-3 py-2" data-testid="project-status-select">
+              {PROJECT_STATUSES.map(s=> <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
             </select>
             <select value={priority} onChange={(e)=>setPriority(e.target.value)} className="border border-[var(--border-default)] rounded-md px-3 py-2">
-              {["high","medium","low"].map(s=> <option key={s} value={s}>{s}</option>)}
+              {PROJECT_PRIORITIES.map(s=> <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -337,32 +250,60 @@ function AddProjectModal({ clients, users, onClose, onSaved }) {
               {clients.map((c)=> <option key={c.id} value={c.id}>{c.company}</option>)}
             </select>
             <select value={health} onChange={(e)=>setHealth(e.target.value)} className="border border-[var(--border-default)] rounded-md px-3 py-2">
-              {["on_track","at_risk","off_track"].map(s=> <option key={s} value={s}>{s}</option>)}
+              {PROJECT_HEALTHS.map(s=> <option key={s} value={s}>{s.replace("_"," ")}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <input type="date" value={start} onChange={(e)=>setStart(e.target.value)} className="border border-[var(--border-default)] rounded-md px-3 py-2" data-testid="project-start-input" />
-            <input type="date" value={end} onChange={(e)=>setEnd(e.target.value)} className="border border-[var(--border-default)] rounded-md px-3 py-2" data-testid="project-end-input" />
+            <label className="block">
+              <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold mb-1">Start date</div>
+              <input type="date" value={start} onChange={(e)=>setStart(e.target.value)} className="w-full border border-[var(--border-default)] rounded-md px-3 py-2" data-testid="project-start-input" />
+            </label>
+            <label className="block">
+              <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold mb-1">End date</div>
+              <input type="date" value={end} onChange={(e)=>setEnd(e.target.value)} className="w-full border border-[var(--border-default)] rounded-md px-3 py-2" data-testid="project-end-input" />
+            </label>
           </div>
-          <textarea value={brief} onChange={(e)=>setBrief(e.target.value)} placeholder="Project brief…" className="w-full border border-[var(--border-default)] rounded-md px-3 py-2 min-h-[80px]" />
+          <input value={leadSource} onChange={(e)=>setLeadSource(e.target.value)} placeholder="Lead source" className="w-full border border-[var(--border-default)] rounded-md px-3 py-2" />
+          {type === "billable_retainer" && (
+            <input type="number" min="0" value={hoursAllocated} onChange={(e)=>setHoursAllocated(e.target.value)} placeholder="Hours allocated (per month)" className="w-full border border-[var(--border-default)] rounded-md px-3 py-2" />
+          )}
+          <input value={deliverables} onChange={(e)=>setDeliverables(e.target.value)} placeholder="Deliverables (comma separated)" className="w-full border border-[var(--border-default)] rounded-md px-3 py-2" data-testid="project-deliverables-input" />
+          <textarea value={brief} onChange={(e)=>setBrief(e.target.value)} placeholder="Project brief\u2026" className="w-full border border-[var(--border-default)] rounded-md px-3 py-2 min-h-[64px]" />
+          <textarea value={scope} onChange={(e)=>setScope(e.target.value)} placeholder="Project scope\u2026" className="w-full border border-[var(--border-default)] rounded-md px-3 py-2 min-h-[64px]" />
           <div>
-            <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold mb-1">Team</div>
-            <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-              {users.filter(u=>u.role!=="client").map((u) => (
-                <button key={u.id} type="button" onClick={()=>toggle(u.id)}
-                  className={`text-xs rounded-full px-2.5 py-1 border ${members.find(m=>m.user_id===u.id) ? "bg-[var(--brand)] text-white border-[var(--brand)]" : "bg-white text-[var(--text-secondary)] border-[var(--border-default)]"}`}>
-                  {u.name}
-                </button>
-              ))}
+            <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold mb-1">Team & roles</div>
+            <div className="space-y-1.5 max-h-64 overflow-y-auto">
+              {users.filter(u=>u.role!=="client").map((u) => {
+                const m = memberObj(u.id);
+                return (
+                  <div key={u.id} className="flex items-center gap-2 p-2 rounded border border-[var(--border-subtle)] bg-white">
+                    <input type="checkbox" checked={!!m} onChange={()=>toggleMember(u.id)} data-testid={`project-member-toggle-${u.id}`} />
+                    <span className="text-sm flex-1 truncate">{u.name}</span>
+                    {m && (
+                      <select value={m.role || ""} onChange={(e)=>setMemberRole(u.id, e.target.value || null)} className="text-xs border border-[var(--border-default)] rounded px-2 py-1" data-testid={`project-member-role-${u.id}`}>
+                        <option value="">— Role —</option>
+                        <option value="Project Owner">Project Owner</option>
+                        <option value="Project Manager">Project Manager</option>
+                        <option value="Designer">Designer</option>
+                        <option value="Engineer">Engineer</option>
+                        <option value="Strategist">Strategist</option>
+                        <option value="Reviewer">Reviewer</option>
+                      </select>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
           {err && <div className="text-xs text-red-700">{String(err)}</div>}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="px-3 py-2 rounded-md border border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)]">Cancel</button>
-            <button type="submit" disabled={busy} className="px-4 py-2 bg-[var(--brand)] text-white rounded-md font-semibold hover:bg-[var(--brand-hover)] disabled:opacity-50" data-testid="project-save-btn">{busy?"Saving…":"Create"}</button>
+            <button type="submit" disabled={busy} className="px-4 py-2 bg-[var(--brand)] text-white rounded-md font-semibold hover:bg-[var(--brand-hover)] disabled:opacity-50" data-testid="project-save-btn">{busy?"Saving\u2026":(isEdit?"Save changes":"Create")}</button>
           </div>
         </form>
       </div>
     </div>
   );
 }
+
+export { AddProjectModal };

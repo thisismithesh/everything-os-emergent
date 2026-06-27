@@ -3,12 +3,16 @@ import { useParams, Link } from "react-router-dom";
 import PageHeader from "@/components/layout/PageHeader";
 import api from "@/lib/api";
 import { Avatar, AvatarStack, StatusPill, PriorityPill, HealthDot, Empty } from "@/components/ui-bits";
-import { Share2, Globe, Download, ArrowLeft } from "lucide-react";
+import { Share2, Globe, Download, ArrowLeft, Pencil, Plus } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import Comments from "@/components/Comments";
 import TaskDetailDrawer from "@/components/TaskDetailDrawer";
+import GanttTimeline from "@/components/GanttTimeline";
+import { EventFormModal } from "@/pages/Calendar";
+import { AddTaskModal } from "@/pages/Tasks";
+import { AddProjectModal } from "@/pages/Projects";
 
-const TYPE_LABEL = { billable_regular: "Billable", billable_retainer: "Retainer", non_billable: "Non-billable" };
+const TYPE_LABEL = { billable_regular: "Billable Project", billable_retainer: "Billable Account", non_billable: "Non-Billable Project" };
 
 export default function ProjectDetail() {
   const { id } = useParams();
@@ -22,6 +26,11 @@ export default function ProjectDetail() {
   const [taskView, setTaskView] = useState("list");
   const [shareCopied, setShareCopied] = useState(false);
   const [drawerTaskId, setDrawerTaskId] = useState(null);
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [showAddEvent, setShowAddEvent] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [editingProject, setEditingProject] = useState(false);
+  const [clients, setClients] = useState([]);
 
   const updateTaskStatus = async (task, status) => {
     if (task.status === status) return;
@@ -44,12 +53,12 @@ export default function ProjectDetail() {
     setEvents(all.filter((e)=>e.project_id === id));
     const us = await api.get("/users").then((r)=>r.data).catch(()=>[]);
     setUsers(us);
+    const cs = await api.get("/clients").then((r)=>r.data).catch(()=>[]);
+    setClients(cs);
     if (p.client_id) {
-      try {
-        const cs = await api.get("/clients").then((r)=>r.data);
-        setClient(cs.find((c)=>c.id===p.client_id) || null);
-      } catch { setClient(null); }
-    }
+      const cs2 = await api.get("/clients").then((r)=>r.data).catch(()=>[]);
+      setClient(cs2.find((c)=>c.id===p.client_id) || null);
+    } else { setClient(null); }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
 
@@ -79,6 +88,9 @@ export default function ProjectDetail() {
         <Link to="/projects" className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1" data-testid="project-back-link"><ArrowLeft className="w-4 h-4" /> All projects</Link>
         {canEdit && (
           <>
+            <button onClick={()=>setEditingProject(true)} className="px-3 py-2 text-sm rounded-md border border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)] flex items-center gap-2" data-testid="project-edit-btn">
+              <Pencil className="w-4 h-4" /> Edit
+            </button>
             <button onClick={togglePublic} className="px-3 py-2 text-sm rounded-md border border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)] flex items-center gap-2" data-testid="project-toggle-public">
               <Globe className="w-4 h-4" /> {project.public_enabled ? "Public" : "Private"}
             </button>
@@ -159,22 +171,42 @@ export default function ProjectDetail() {
                   <button key={v} onClick={()=>setTaskView(v)} className={`px-3 py-1.5 text-xs font-semibold capitalize ${taskView===v?"bg-[var(--brand)] text-white":"text-[var(--text-secondary)]"}`} data-testid={`project-tasks-view-${v}`}>{v}</button>
                 ))}
               </div>
-              <a href={`${process.env.REACT_APP_BACKEND_URL}/api/export/tasks.csv`} className="text-sm flex items-center gap-2 px-3 py-2 border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-surface-hover)]"><Download className="w-4 h-4" /> Export</a>
+              <div className="flex items-center gap-2">
+                <a href={`${process.env.REACT_APP_BACKEND_URL}/api/export/tasks.csv`} className="text-sm flex items-center gap-2 px-3 py-2 border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-surface-hover)]"><Download className="w-4 h-4" /> Export</a>
+                {canEdit && <button onClick={()=>setShowAddTask(true)} className="text-sm flex items-center gap-2 px-3 py-2 bg-[var(--brand)] text-white rounded-md font-semibold hover:bg-[var(--brand-hover)]" data-testid="project-add-task-btn"><Plus className="w-4 h-4" /> Task</button>}
+              </div>
             </div>
             {tasks.length === 0 ? <Empty title="No tasks yet" /> : (
               taskView === "list" ? <TaskList tasks={tasks} userById={userById} onOpen={setDrawerTaskId} /> :
               taskView === "kanban" ? <TaskKanban tasks={tasks} userById={userById} onOpen={setDrawerTaskId} updateStatus={updateTaskStatus} /> :
-              <TaskGantt tasks={tasks} onOpen={setDrawerTaskId} onPatch={patchTaskDates} />
+              <GanttTimeline
+                rows={tasks.filter((tk)=>tk.original_deadline || tk.latest_deadline).map((tk)=> ({
+                  id: tk.id,
+                  label: tk.name,
+                  sublabel: tk.category,
+                  start: tk.original_deadline || tk.latest_deadline,
+                  end: tk.latest_deadline || tk.original_deadline,
+                  color: tk.status === "done" ? "#10B981" : tk.status === "blocked" ? "#EF4444" : "#0A0A0A",
+                  onClick: () => setDrawerTaskId(tk.id),
+                }))}
+                onPatch={async (tid, { start, end }) => { await patchTaskDates(tid, { original_deadline: start, latest_deadline: end }); }}
+                emptyMessage="Add deadlines to your tasks to see the Gantt view."
+              />
             )}
           </>
         )}
 
         {tab === "calendar" && (
-          <Section title="Project events">
+          <Section title={(
+            <div className="flex items-center justify-between w-full">
+              <span>Project events</span>
+              {canEdit && <button onClick={()=>setShowAddEvent(true)} className="text-xs flex items-center gap-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)]" data-testid="project-add-event-btn"><Plus className="w-3 h-3" /> Event</button>}
+            </div>
+          )}>
             {events.length === 0 ? <span className="text-sm text-[var(--text-tertiary)]">No events scheduled.</span> : (
               <ul className="divide-y divide-[var(--border-subtle)]">
                 {events.map((e) => (
-                  <li key={e.id} className="py-3 flex items-center justify-between">
+                  <li key={e.id} className="py-3 flex items-center justify-between cursor-pointer hover:bg-[var(--bg-surface-hover)] -mx-3 px-3 rounded" onClick={()=>setEditingEvent(e)} data-testid={`project-event-${e.id}`}>
                     <div>
                       <div className="font-medium text-sm">{e.name}</div>
                       <div className="text-xs text-[var(--text-secondary)]">{e.date} · {e.time || "—"} → {e.end_time || "—"} · {e.location || "—"}</div>
@@ -188,25 +220,54 @@ export default function ProjectDetail() {
         )}
 
         {tab === "team" && (
-          <Section title="Project team">
-            {team.length === 0 ? <span className="text-sm text-[var(--text-tertiary)]">No team yet.</span> : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {team.map((m) => (
-                  <div key={m.id} className="flex items-center gap-3 p-3 border border-[var(--border-default)] rounded-md bg-white">
-                    <Avatar user={m} size={40} />
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium truncate">{m.name}</div>
-                      <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] truncate">{m.role || m.title}</div>
+          <>
+            <Section title="Project team">
+              {team.length === 0 ? <span className="text-sm text-[var(--text-tertiary)]">No team yet.</span> : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {team.map((m) => (
+                    <div key={m.id} className="flex items-center gap-3 p-3 border border-[var(--border-default)] rounded-md bg-white" data-testid={`project-team-member-${m.id}`}>
+                      <Avatar user={m} size={40} />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium truncate">{m.name}</div>
+                        <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] truncate">{m.role || m.title}</div>
+                      </div>
+                      {(m.role === "Project Owner" || m.role === "Project Manager") && (
+                        <span className="text-[9px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded bg-[var(--brand)] text-white">{m.role === "Project Owner" ? "Owner" : "Mgr"}</span>
+                      )}
                     </div>
+                  ))}
+                </div>
+              )}
+            </Section>
+            {(() => {
+              const clientUsers = users.filter((u) => u.role === "client" && project.client_id && u.client_id === project.client_id);
+              if (clientUsers.length === 0) return null;
+              return (
+                <Section title="Client contacts">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {clientUsers.map((m) => (
+                      <div key={m.id} className="flex items-center gap-3 p-3 border border-[var(--border-default)] rounded-md bg-white" data-testid={`project-client-user-${m.id}`}>
+                        <Avatar user={m} size={40} />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium truncate">{m.name}</div>
+                          <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] truncate">{m.title || client?.company || "Client"}</div>
+                        </div>
+                        <span className="text-[9px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded bg-[var(--accent)] text-white">Client</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-          </Section>
+                </Section>
+              );
+            })()}
+          </>
         )}
       </div>
 
       {drawerTaskId && <TaskDetailDrawer taskId={drawerTaskId} users={users} onClose={()=>setDrawerTaskId(null)} onChanged={load} />}
+      {showAddTask && <AddTaskModal projects={[project]} users={users} onClose={()=>setShowAddTask(false)} onSaved={load} defaultProjectId={project.id} hideProjectSelect />}
+      {showAddEvent && <EventFormModal users={users} projectId={project.id} onClose={()=>setShowAddEvent(false)} onSaved={load} canEdit={canEdit} />}
+      {editingEvent && <EventFormModal event={editingEvent} users={users} onClose={()=>setEditingEvent(null)} onSaved={load} canEdit={canEdit} />}
+      {editingProject && <AddProjectModal project={project} clients={clients} users={users} onClose={()=>setEditingProject(false)} onSaved={load} />}
     </>
   );
 }

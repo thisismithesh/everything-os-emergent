@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import PageHeader from "@/components/layout/PageHeader";
 import api from "@/lib/api";
 import { Avatar, StatusPill } from "@/components/ui-bits";
+import GanttTimeline from "@/components/GanttTimeline";
 
 const TYPE_LABEL = { billable_regular: "Billable", billable_retainer: "Retainer", non_billable: "Non-billable" };
 
@@ -49,8 +50,34 @@ export default function Dashboard() {
           <Kpi label="Team size" value={stats.teamSize} />
         </div>
 
-        <section className="bg-white border border-[var(--border-default)] rounded-md p-5">
-          <h3 className="text-base font-bold tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>Project timelines</h3>
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-base font-bold tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>Project timelines</h3>
+          </div>
+          <GanttTimeline
+            rows={projects.map((p) => ({
+              id: p.id,
+              label: p.name,
+              sublabel: TYPE_LABEL[p.type],
+              start: p.start_date,
+              end: p.end_date,
+              color: p.health === "on_track" ? "#0A0A0A" : p.health === "at_risk" ? "#F59E0B" : "#EF4444",
+              onClick: () => window.location.assign(`/projects/${p.id}`),
+            }))}
+            onPatch={async (pid, { start, end }) => {
+              const target = data.projects.find((x)=>x.id===pid);
+              if (!target) return;
+              const body = { ...target, start_date: start, end_date: end };
+              delete body.id; delete body.share_token; delete body.public_enabled; delete body.created_at;
+              await api.patch(`/projects/${pid}`, body).catch(()=>{});
+              const r = await api.get("/dashboard/gantt").catch(()=>({data:{}}));
+              if (r.data) setData(r.data);
+            }}
+            emptyMessage="No project timelines yet."
+          />
+        </section>
+        <section className="bg-white border border-[var(--border-default)] rounded-md p-5" style={{display:"none"}}>
+          <h3 className="text-base font-bold tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>Project timelines (legacy)</h3>
           <div className="mt-3 overflow-x-auto">
             {dateRange.length === 0 ? <div className="text-sm text-[var(--text-tertiary)]">No timeline data.</div> : (
               <div className="min-w-fit">
