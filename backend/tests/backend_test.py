@@ -242,6 +242,172 @@ class TestEventsLeaves:
         admin.delete(f"{API}/leaves/{lid}")
 
 
+# --- Phase 2: Comments ---
+class TestComments:
+    def test_comment_task_crud_admin(self, admin):
+        tasks = admin.get(f"{API}/tasks").json()
+        assert tasks, "Need at least 1 task"
+        tid = tasks[0]["id"]
+        # CREATE
+        r = admin.post(f"{API}/comments", json={"entity_type": "task", "entity_id": tid, "body": "TEST_hello"})
+        assert r.status_code == 200, r.text
+        c = r.json()
+        assert c["body"] == "TEST_hello"
+        assert c["entity_type"] == "task"
+        assert c["entity_id"] == tid
+        assert c["user_id"]
+        cid = c["id"]
+        # LIST
+        r = admin.get(f"{API}/comments", params={"entity_type": "task", "entity_id": tid})
+        assert r.status_code == 200
+        assert any(x["id"] == cid for x in r.json())
+        # DELETE
+        r = admin.delete(f"{API}/comments/{cid}")
+        assert r.status_code == 200
+        rows = admin.get(f"{API}/comments", params={"entity_type": "task", "entity_id": tid}).json()
+        assert not any(x["id"] == cid for x in rows)
+
+    def test_client_cannot_comment_task(self, client_user):
+        # need a task id from admin
+        s_admin = _session("admin")
+        tasks = s_admin.get(f"{API}/tasks").json()
+        tid = tasks[0]["id"]
+        r = client_user.post(f"{API}/comments", json={"entity_type": "task", "entity_id": tid, "body": "TEST_bad"})
+        assert r.status_code == 403
+
+    def test_client_can_comment_own_project(self, client_user, admin):
+        projs = client_user.get(f"{API}/projects").json()
+        assert projs, "Client should see their own project"
+        pid = projs[0]["id"]
+        r = client_user.post(f"{API}/comments", json={"entity_type": "project", "entity_id": pid, "body": "TEST_clientcomment"})
+        assert r.status_code == 200, r.text
+        cid = r.json()["id"]
+        # Cleanup via admin (allowed for leadership)
+        admin.delete(f"{API}/comments/{cid}")
+
+    def test_client_cannot_comment_other_project(self, client_user, admin):
+        # find a non-Acme project
+        all_proj = admin.get(f"{API}/projects").json()
+        not_acme = next((p for p in all_proj if "Acme" not in p["name"]), None)
+        if not not_acme:
+            pytest.skip("no non-Acme project")
+        r = client_user.post(f"{API}/comments", json={"entity_type": "project", "entity_id": not_acme["id"], "body": "TEST_x"})
+        assert r.status_code == 403
+
+
+# --- Phase 2: Notifications ---
+class TestNotifications:
+    def test_task_status_change_notifies_assignee(self, admin):
+        # Get team user id
+        users = admin.get(f"{API}/users").json()
+        team_user = next((u for u in users if u["email"] == "arjun@studio.com"), None)
+        assert team_user
+        # Pick a project for the task
+        pid = admin.get(f"{API}/projects").json()[0]["id"]
+        # Create task assigned to arjun
+        r = admin.post(f"{API}/tasks", json={"name": "TEST_NotifTask", "project_id": pid, "assignees": [team_user["id"]], "status": "todo"})
+        assert r.status_code == 200, r.text
+        tid = r.json()["id"]
+        # Admin changes status -> triggers notify (not for admin's self action)
+        r = admin.patch(f"{API}/tasks/{tid}", json={"status": "review"})
+        assert r.status_code == 200
+        # Login as arjun and check notifications
+        arjun = _session("team")
+        notifs = arjun.get(f"{API}/notifications").json()
+        items = notifs.get("items", [])
+        types_msgs = [(n["type"], n.get("message", "")) for n in items]
+        assert any(t == "task_status_changed" and "TEST_NotifTask" in m for t, m in types_msgs), \
+            f"Expected task_status_changed for TEST_NotifTask, got {types_msgs[:5]}"
+        # Cleanup
+        admin.delete(f"{API}/tasks/{tid}")
+
+    def test_comment_mention_notifies(self, admin):
+        users = admin.get(f"{API}/users").json()
+        maya = next((u for u in users if u["email"] == "maya@studio.com"), None)
+        tid = admin.get(f"{API}/tasks").json()[0]["id"]
+        r = admin.post(f"{API}/comments", json={
+            "entity_type": "task", "entity_id": tid,
+            "body": "TEST_hey @Maya", "mentions": [maya["id"]],
+        })
+        assert r.status_code == 200, r.text
+        cid = r.json()["id"]
+        maya_s = _session("manager")
+        notifs = maya_s.get(f"{API}/notifications").json()["items"]
+        assert any(n["type"] == "comment_mention" for n in notifs), \
+            f"Expected comment_mention notification for Maya"
+        admin.delete(f"{API}/comments/{cid}")
+
+    def test_mark_all_read(self, admin):
+        # ensure at least one unread by self-mention not possible, so just call endpoint
+        r = admin.post(f"{API}/notifications/read-all")
+        assert r.status_code == 200
+        notifs = admin.get(f"{API}/notifications").json()
+        assert notifs["unread"] == 0
+
+
+# --- Phase 2: Timer + Time entries ---
+class TestTimerAndEntries:
+    def test_timer_full_flow_auto_stop(self, manager, admin):
+        import time as _t
+        tasks = admin.get(f"{API}/tasks").json()
+        assert len(tasks) >= 2
+        t1, t2 = tasks[0]["id"], tasks[1]["id"]
+        # start
+        r = manager.post(f"{API}/timer/start", json={"task_id": t1})
+        assert r.status_code == 200, r.text
+        active = manager.get(f"{API}/timer/active").json()
+        assert active and active["task_id"] == t1
+        # start second timer => auto-stop first
+        r = manager.post(f"{API}/timer/start", json={"task_id": t2})
+        assert r.status_code == 200
+        active2 = manager.get(f"{API}/timer/active").json()
+        assert active2["task_id"] == t2
+        _t.sleep(2)
+        # stop
+        r = manager.post(f"{API}/timer/stop")
+        assert r.status_code == 200, r.text
+        entry = r.json()
+        assert entry["task_id"] == t2
+        assert entry["duration_minutes"] >= 1
+        # task.time_spent updated
+        task = next((x for x in admin.get(f"{API}/tasks").json() if x["id"] == t2), None)
+        assert task is not None
+        assert (task.get("time_spent") or 0) >= 0
+        # no active now
+        assert manager.get(f"{API}/timer/active").json() in (None, {})
+
+    def test_time_entry_create_list_filter_delete(self, manager, admin):
+        tid = admin.get(f"{API}/tasks").json()[0]["id"]
+        payload = {
+            "task_id": tid,
+            "start_time": "2026-01-05T09:00:00",
+            "end_time":   "2026-01-05T10:30:00",
+            "note": "TEST_entry",
+        }
+        r = manager.post(f"{API}/time-entries", json=payload)
+        assert r.status_code == 200, r.text
+        eid = r.json()["id"]
+        assert r.json()["duration_minutes"] == 90
+        # filter by date range
+        me = manager.get(f"{API}/auth/me").json()
+        r = manager.get(f"{API}/time-entries", params={
+            "user_id": me["id"], "start": "2026-01-05", "end": "2026-01-05"
+        })
+        assert r.status_code == 200
+        rows = r.json()
+        assert any(x["id"] == eid for x in rows)
+        # delete
+        r = manager.delete(f"{API}/time-entries/{eid}")
+        assert r.status_code == 200
+
+    def test_client_cannot_list_time_entries(self, client_user):
+        assert client_user.get(f"{API}/time-entries").status_code == 403
+
+    def test_client_cannot_start_timer(self, client_user, admin):
+        tid = admin.get(f"{API}/tasks").json()[0]["id"]
+        assert client_user.post(f"{API}/timer/start", json={"task_id": tid}).status_code == 403
+
+
 # --- CSV exports ---
 class TestCSVExport:
     @pytest.mark.parametrize("resource", ["projects", "tasks", "users", "events"])

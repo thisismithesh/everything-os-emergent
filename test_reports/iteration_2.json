@@ -1,0 +1,52 @@
+{
+  "summary": "Phase 2 testing for Studio PM (comments, notifications, timer, time-entries, DnD Kanban, Gantt drag-edit, Timesheets, NotificationBell). Backend: 40/40 pytest passing (added 11 new tests across TestComments, TestNotifications, TestTimerAndEntries). Frontend: admin/client sidebar role gating for Timesheets confirmed; bell + dropdown render; Kanban HTML5 drag-and-drop moves card from 'To do' to 'In progress' and persists after refresh; task drawer opens; timer Start/Stop creates a time entry visible on Timesheets page; comment composer accepts input and submits; status change as admin generates 'task_status_changed' notification for the assignee Arjun (badge correctly shows '4'); /timesheets KPIs (Week total, Daily avg, Entries, Tasks) and week navigation work. Two real issues found below.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Projects.jsx Gantt drag-edit (project bar resize)",
+        "issue": "Resizing a project's right edge (data-testid=proj-gantt-resize-*) visually updates during drag but does NOT persist the new end_date after mouseup. Refresh keeps the original width (delta=0px). Root cause: the global mousemove/mouseup handlers are registered with `onMove`/`onUp` closures that capture stale `lp`/`wd` state from the render in which onMouseDown ran. Although setLp/setWd update React state on subsequent mousemoves and re-render, the `onUp` listener registered to `window` still references the original closure where `lp`/`wd` are unchanged, so `newEnd = dateAt(lp + wd - 1)` is computed from initial values and the PATCH /projects/:id either no-ops or sends the unchanged end_date.",
+        "selector": "[data-testid='proj-gantt-resize-*']",
+        "priority": "HIGH"
+      },
+      {
+        "component": "NotificationBell.jsx mark-all-read",
+        "issue": "After clicking [data-testid='notif-mark-all-read'], the [data-testid='notif-unread-count'] badge still remained visible after an 800ms wait. Backend /notifications/read-all itself works (covered by passing pytest test_mark_all_read). Likely a UI race: clicking inside the dropdown can trigger the outside-click handler which calls setOpen(false), the async load() then resolves into a possibly unmounted/older state. Recommend optimistic update (setData({...data, unread:0, items: items.map(i=>({...i,read:true}))})) before/after the API call to remove flicker, and ensure the click does not propagate to mousedown listener.",
+        "selector": "[data-testid='notif-mark-all-read']",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix Projects.jsx Gantt drag-edit closure-staleness so end_date actually persists. Use a ref to track current lp/wd, OR move state into useRef and update DOM via style during drag, then read ref values in onUp. The same pattern in ProjectDetail.jsx task Gantt should be audited.",
+    "Make NotificationBell.markAll do an optimistic UI update so the badge clears immediately on click instead of relying on the next load() (which may race with the outside-click close handler).",
+    "Optional: add data-testid='notif-empty-state' for the 'You're all caught up.' message to ease UI tests."
+  ],
+  "critical_code_review_comments": [
+    "server.py has grown past ~1300 lines — strongly recommend splitting routers into modules (comments.py, timer.py, time_entries.py, notifications.py).",
+    "notify() runs sequentially inside endpoint handlers; for tasks with many watchers + mentions this adds latency. Consider asyncio.gather() for fan-out notifications.",
+    "list_time_entries date filter only filters start_time; an entry whose start_time is before `start` but end_time within the week would be missed. Acceptable for MVP but worth a comment.",
+    "Comments delete: leadership/manager can delete any comment but there is no audit log; minor concern.",
+    "TimerBar/NotificationBell/Comments have hard-coded polling intervals (likely 20s in bell). Consider exposing as constants and pausing while tab is hidden.",
+    "Projects.jsx Gantt resize bug above is a real correctness issue, not just a test artifact."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {
+    "backend": "100% (40/40 pytest including 11 new Phase 2 tests)",
+    "frontend": "~85% — Kanban DnD persistence, drawer+timer+comments, Timesheets page+KPIs, notif badge/dropdown, sidebar role-gating all pass. Gantt drag-edit on /projects does not persist; notif mark-all-read UI doesn't immediately clear badge."
+  },
+  "test_credentials": "From /app/memory/test_credentials.md: admin@studio.com/admin123, maya@studio.com/password123, arjun@studio.com/password123, client@acme.com/password123.",
+  "seed_data_creation": "No persistent seed. Test-created comments/tasks/entries are prefixed TEST_ and cleaned up by their respective tests.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend pytest at /app/backend/tests/backend_test.py covers Phase 1 + Phase 2 (40 tests, all passing). Notification triggers exclude self-actor — to test you must change the task as a DIFFERENT user from the assignee. The HTML5 Kanban DnD works with Playwright's mouse.down/move/up sequence (do NOT use dispatchEvent('dragstart') — the app reads from a synthetic dataTransfer). Gantt drag uses window-level mouse events; the resize handle children must receive mousedown on the inner div (data-testid=proj-gantt-resize-*) NOT the parent bar. NotificationBell polls every 20s; a refresh or 21s wait will resync if badge looks stale.",
+  "rca of the issue": "Projects.jsx Gantt resize: onMouseDownResize() registers `onMove` and `onUp` as window listeners. These functions, defined in the component body, close over the `lp` and `wd` values from the render at which the drag started. setLp(next)/setWd(next) trigger re-renders, but window.addEventListener still holds the original function references whose closures see the original `lp`/`wd`. When `onUp` finally runs it computes `newEnd = dateAt(lp + wd - 1)` using stale values, so the PATCH to /api/projects/:id sends the un-changed end_date. Fix: keep mutable `lpRef`/`wdRef` via useRef, update them in onMove alongside setState, and read from the refs in onUp. The same logic exists in ProjectDetail.jsx for task bars and should be audited and fixed similarly."
+}

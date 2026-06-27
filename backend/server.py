@@ -474,8 +474,25 @@ async def get_project(project_id: str, user: dict = Depends(get_current_user)):
 
 @api.patch("/projects/{project_id}")
 async def update_project(project_id: str, data: ProjectIn, user: dict = Depends(require_roles("leadership", "manager"))):
-    await db.projects.update_one({"id": project_id}, {"$set": data.model_dump()})
+    prev = await db.projects.find_one({"id": project_id})
+    if not prev:
+        raise HTTPException(status_code=404, detail="Not found")
+    update = data.model_dump()
+    await db.projects.update_one({"id": project_id}, {"$set": update})
     p = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    # Notify on status / health change
+    interesting = []
+    if update.get("status") != prev.get("status"):
+        interesting.append(("project_status_changed", f"status → {update.get('status')}"))
+    if update.get("health") != prev.get("health"):
+        interesting.append(("project_health_changed", f"health → {update.get('health')}"))
+    if interesting:
+        member_ids = [m.get("user_id") for m in (p.get("members") or []) if m.get("user_id")]
+        for typ, frag in interesting:
+            for uid in member_ids:
+                if uid != user["id"]:
+                    await notify(uid, typ, f"{user['name']} updated “{p['name']}” {frag}",
+                                 link=f"/projects/{p['id']}", actor_id=user["id"])
     return p
 
 
@@ -547,17 +564,44 @@ async def create_task(data: TaskIn, user: dict = Depends(require_roles("leadersh
            "created_by": user["id"], "created_at": now_utc().isoformat()}
     await db.tasks.insert_one(doc)
     doc.pop("_id", None)
+    # Notify assignees
+    for uid in (doc.get("assignees") or []):
+        if uid != user["id"]:
+            await notify(uid, "task_assigned",
+                         f"{user['name']} assigned you to “{doc['name']}”",
+                         link=f"/tasks?task={doc['id']}", actor_id=user["id"])
     return doc
 
 
 @api.patch("/tasks/{task_id}")
 async def update_task(task_id: str, data: TaskUpdate, user: dict = Depends(require_roles("leadership", "manager", "team"))):
     update = {k: v for k, v in data.model_dump().items() if v is not None}
-    if update:
-        await db.tasks.update_one({"id": task_id}, {"$set": update})
-    t = await db.tasks.find_one({"id": task_id}, {"_id": 0})
-    if not t:
+    if not update:
+        t = await db.tasks.find_one({"id": task_id}, {"_id": 0})
+        if not t:
+            raise HTTPException(status_code=404, detail="Not found")
+        return t
+    prev = await db.tasks.find_one({"id": task_id})
+    if not prev:
         raise HTTPException(status_code=404, detail="Not found")
+    await db.tasks.update_one({"id": task_id}, {"$set": update})
+    t = await db.tasks.find_one({"id": task_id}, {"_id": 0})
+
+    # Notify on status change
+    if "status" in update and update["status"] != prev.get("status"):
+        for uid in (t.get("assignees") or []):
+            if uid != user["id"]:
+                await notify(uid, "task_status_changed",
+                             f"{user['name']} moved “{t['name']}” → {update['status']}",
+                             link=f"/tasks?task={t['id']}", actor_id=user["id"])
+    # Notify newly added assignees
+    if "assignees" in update:
+        new_assignees = set(update["assignees"] or []) - set(prev.get("assignees") or [])
+        for uid in new_assignees:
+            if uid != user["id"]:
+                await notify(uid, "task_assigned",
+                             f"{user['name']} assigned you to “{t['name']}”",
+                             link=f"/tasks?task={t['id']}", actor_id=user["id"])
     return t
 
 
@@ -621,6 +665,256 @@ async def create_leave(data: LeaveIn, user: dict = Depends(require_roles("leader
 @api.delete("/leaves/{leave_id}")
 async def delete_leave(leave_id: str, user: dict = Depends(require_roles("leadership", "manager", "team"))):
     await db.leaves.delete_one({"id": leave_id})
+    return {"ok": True}
+
+
+# ---------- Comments ----------
+ENTITY_TYPES = ("task", "project", "event")
+
+
+class CommentIn(BaseModel):
+    entity_type: Literal["task", "project", "event"]
+    entity_id: str
+    body: str
+    mentions: Optional[List[str]] = []
+
+
+async def _entity_recipients(entity_type: str, entity_id: str) -> List[str]:
+    if entity_type == "task":
+        t = await db.tasks.find_one({"id": entity_id})
+        return list(set(t.get("assignees") or [])) if t else []
+    if entity_type == "project":
+        p = await db.projects.find_one({"id": entity_id})
+        return [m.get("user_id") for m in (p.get("members") or []) if m.get("user_id")] if p else []
+    if entity_type == "event":
+        e = await db.events.find_one({"id": entity_id})
+        return list(set(e.get("attendees") or [])) if e else []
+    return []
+
+
+async def _entity_label(entity_type: str, entity_id: str) -> str:
+    coll = {"task": db.tasks, "project": db.projects, "event": db.events}[entity_type]
+    d = await coll.find_one({"id": entity_id})
+    return d.get("name", "") if d else ""
+
+
+@api.get("/comments")
+async def list_comments(entity_type: str, entity_id: str, user: dict = Depends(get_current_user)):
+    if entity_type not in ENTITY_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid entity_type")
+    rows = await db.comments.find({"entity_type": entity_type, "entity_id": entity_id}, {"_id": 0}) \
+        .sort("created_at", 1).to_list(1000)
+    return rows
+
+
+@api.post("/comments")
+async def create_comment(data: CommentIn, user: dict = Depends(get_current_user)):
+    if user["role"] == "client":
+        # clients can only comment on their own projects
+        if data.entity_type == "project":
+            p = await db.projects.find_one({"id": data.entity_id})
+            if not p or p.get("client_id") != user.get("client_id"):
+                raise HTTPException(status_code=403, detail="Forbidden")
+        else:
+            raise HTTPException(status_code=403, detail="Forbidden")
+    doc = {
+        "id": new_id(),
+        "entity_type": data.entity_type, "entity_id": data.entity_id,
+        "body": data.body, "mentions": data.mentions or [],
+        "user_id": user["id"], "user_name": user["name"], "user_avatar": user.get("avatar"),
+        "created_at": now_utc().isoformat(),
+    }
+    await db.comments.insert_one(doc)
+    doc.pop("_id", None)
+
+    # Notify entity watchers + mentions
+    label = await _entity_label(data.entity_type, data.entity_id)
+    link_map = {
+        "task": f"/tasks?task={data.entity_id}",
+        "project": f"/projects/{data.entity_id}",
+        "event": "/calendar",
+    }
+    link = link_map[data.entity_type]
+    watchers = set(await _entity_recipients(data.entity_type, data.entity_id))
+    mentions = set(data.mentions or [])
+    # Mentions
+    for uid in mentions:
+        if uid != user["id"]:
+            await notify(uid, "comment_mention",
+                         f"{user['name']} mentioned you on “{label}”",
+                         link=link, actor_id=user["id"])
+    # Watchers (excluding mentioned & self)
+    for uid in watchers - mentions - {user["id"]}:
+        await notify(uid, "comment_new",
+                     f"{user['name']} commented on “{label}”",
+                     link=link, actor_id=user["id"])
+    return doc
+
+
+@api.delete("/comments/{comment_id}")
+async def delete_comment(comment_id: str, user: dict = Depends(get_current_user)):
+    c = await db.comments.find_one({"id": comment_id})
+    if not c:
+        raise HTTPException(status_code=404, detail="Not found")
+    if c["user_id"] != user["id"] and user["role"] not in ("leadership", "manager"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    await db.comments.delete_one({"id": comment_id})
+    return {"ok": True}
+
+
+# ---------- Time entries & timer ----------
+class TimerStartIn(BaseModel):
+    task_id: str
+    note: Optional[str] = None
+
+
+class TimeEntryIn(BaseModel):
+    task_id: str
+    start_time: str
+    end_time: str
+    note: Optional[str] = None
+
+
+async def _recompute_task_time(task_id: str) -> None:
+    entries = await db.time_entries.find({"task_id": task_id}, {"duration_minutes": 1, "_id": 0}).to_list(5000)
+    total_minutes = sum(e.get("duration_minutes") or 0 for e in entries)
+    hours = round(total_minutes / 60, 2)
+    await db.tasks.update_one({"id": task_id}, {"$set": {"time_spent": hours}})
+
+
+@api.post("/timer/start")
+async def timer_start(data: TimerStartIn, user: dict = Depends(require_roles("leadership", "manager", "team"))):
+    # Stop any active timer first
+    await db.active_timers.delete_one({"user_id": user["id"]})
+    doc = {
+        "user_id": user["id"], "task_id": data.task_id, "note": data.note,
+        "started_at": now_utc().isoformat(),
+    }
+    await db.active_timers.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.post("/timer/stop")
+async def timer_stop(user: dict = Depends(require_roles("leadership", "manager", "team"))):
+    active = await db.active_timers.find_one({"user_id": user["id"]})
+    if not active:
+        raise HTTPException(status_code=400, detail="No active timer")
+    started = datetime.fromisoformat(active["started_at"])
+    ended = now_utc()
+    duration_minutes = max(1, int((ended - started).total_seconds() // 60))
+    entry = {
+        "id": new_id(),
+        "task_id": active["task_id"], "user_id": user["id"],
+        "start_time": active["started_at"], "end_time": ended.isoformat(),
+        "duration_minutes": duration_minutes,
+        "note": active.get("note"),
+        "source": "timer",
+        "created_at": ended.isoformat(),
+    }
+    await db.time_entries.insert_one(entry)
+    await db.active_timers.delete_one({"user_id": user["id"]})
+    await _recompute_task_time(active["task_id"])
+    entry.pop("_id", None)
+    return entry
+
+
+@api.get("/timer/active")
+async def timer_active(user: dict = Depends(get_current_user)):
+    a = await db.active_timers.find_one({"user_id": user["id"]}, {"_id": 0})
+    return a or None
+
+
+@api.get("/time-entries")
+async def list_time_entries(
+    task_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+):
+    if user["role"] == "client":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    q: dict = {}
+    if task_id:
+        q["task_id"] = task_id
+    if user_id:
+        q["user_id"] = user_id
+    if start or end:
+        rng: dict = {}
+        if start:
+            rng["$gte"] = start
+        if end:
+            rng["$lte"] = end + "T23:59:59"
+        q["start_time"] = rng
+    return await db.time_entries.find(q, {"_id": 0}).sort("start_time", -1).to_list(5000)
+
+
+@api.post("/time-entries")
+async def create_time_entry(data: TimeEntryIn, user: dict = Depends(require_roles("leadership", "manager", "team"))):
+    start_dt = datetime.fromisoformat(data.start_time)
+    end_dt = datetime.fromisoformat(data.end_time)
+    if end_dt <= start_dt:
+        raise HTTPException(status_code=400, detail="End time must be after start time")
+    duration_minutes = int((end_dt - start_dt).total_seconds() // 60)
+    doc = {
+        "id": new_id(),
+        "task_id": data.task_id, "user_id": user["id"],
+        "start_time": data.start_time, "end_time": data.end_time,
+        "duration_minutes": duration_minutes,
+        "note": data.note, "source": "manual",
+        "created_at": now_utc().isoformat(),
+    }
+    await db.time_entries.insert_one(doc)
+    await _recompute_task_time(data.task_id)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.delete("/time-entries/{entry_id}")
+async def delete_time_entry(entry_id: str, user: dict = Depends(require_roles("leadership", "manager", "team"))):
+    e = await db.time_entries.find_one({"id": entry_id})
+    if not e:
+        raise HTTPException(status_code=404, detail="Not found")
+    if e["user_id"] != user["id"] and user["role"] not in ("leadership", "manager"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    await db.time_entries.delete_one({"id": entry_id})
+    await _recompute_task_time(e["task_id"])
+    return {"ok": True}
+
+
+# ---------- Notifications ----------
+async def notify(user_id: str, type_: str, message: str, link: Optional[str] = None,
+                 actor_id: Optional[str] = None) -> None:
+    if not user_id:
+        return
+    await db.notifications.insert_one({
+        "id": new_id(),
+        "user_id": user_id, "type": type_, "message": message,
+        "link": link, "actor_id": actor_id, "read": False,
+        "created_at": now_utc().isoformat(),
+    })
+
+
+@api.get("/notifications")
+async def list_notifications(user: dict = Depends(get_current_user)):
+    items = await db.notifications.find({"user_id": user["id"]}, {"_id": 0}) \
+        .sort("created_at", -1).limit(100).to_list(100)
+    unread = await db.notifications.count_documents({"user_id": user["id"], "read": False})
+    return {"items": items, "unread": unread}
+
+
+@api.post("/notifications/{notif_id}/read")
+async def mark_read(notif_id: str, user: dict = Depends(get_current_user)):
+    await db.notifications.update_one(
+        {"id": notif_id, "user_id": user["id"]}, {"$set": {"read": True}})
+    return {"ok": True}
+
+
+@api.post("/notifications/read-all")
+async def mark_all_read(user: dict = Depends(get_current_user)):
+    await db.notifications.update_many(
+        {"user_id": user["id"], "read": False}, {"$set": {"read": True}})
     return {"ok": True}
 
 
@@ -764,6 +1058,14 @@ async def seed_db():
     await db.clients.create_index("id", unique=True)
     await db.teams.create_index("id", unique=True)
     await db.leaves.create_index("id", unique=True)
+    await db.comments.create_index([("entity_type", 1), ("entity_id", 1)])
+    await db.comments.create_index("id", unique=True)
+    await db.time_entries.create_index("id", unique=True)
+    await db.time_entries.create_index([("user_id", 1), ("start_time", -1)])
+    await db.time_entries.create_index("task_id")
+    await db.active_timers.create_index("user_id", unique=True)
+    await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
+    await db.notifications.create_index("id", unique=True)
 
     # Teams
     teams = {}

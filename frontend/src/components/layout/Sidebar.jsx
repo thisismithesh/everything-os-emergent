@@ -2,18 +2,20 @@ import { NavLink, useLocation } from "react-router-dom";
 import { TABS } from "@/contexts/AuthContext";
 import {
   Calendar, ListChecks, FolderKanban, Users, Building2, Megaphone,
-  Briefcase, Building, LayoutDashboard, Wallet, User as UserIcon, LogOut
+  Briefcase, Building, LayoutDashboard, Wallet, User as UserIcon, LogOut, Clock
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import NotificationBell from "@/components/NotificationBell";
+import TimerBar from "@/components/TimerBar";
 
 const ICONS = {
-  calendar: Calendar, tasks: ListChecks, projects: FolderKanban, team: Users,
+  calendar: Calendar, tasks: ListChecks, timesheets: Clock, projects: FolderKanban, team: Users,
   clients: Building2, marketing: Megaphone, sales: Briefcase, company: Building,
   dashboard: LayoutDashboard, financials: Wallet,
 };
 
 const GROUPS = [
-  ["calendar", "tasks", "projects"],
+  ["calendar", "tasks", "timesheets", "projects"],
   ["team", "clients"],
   ["marketing", "sales", "company"],
   ["dashboard", "financials"],
@@ -35,14 +37,17 @@ export default function Sidebar() {
       data-testid="sidebar"
     >
       <div className="px-6 py-5 border-b border-[var(--border-default)]">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-[var(--brand)] rounded-sm flex items-center justify-center">
-            <span className="text-white text-sm font-black tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>S</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 bg-[var(--brand)] rounded-sm flex items-center justify-center">
+              <span className="text-white text-sm font-black tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>S</span>
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-bold tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>Studio PM</div>
+              <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)]">Design Agency</div>
+            </div>
           </div>
-          <div>
-            <div className="text-sm font-bold tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>Studio PM</div>
-            <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)]">Design Agency</div>
-          </div>
+          <NotificationBell />
         </div>
       </div>
 
@@ -79,6 +84,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="border-t border-[var(--border-default)] p-3 space-y-1">
+        <TimerBar />
         <NavLink
           to="/profile"
           data-testid="sidebar-profile-link"

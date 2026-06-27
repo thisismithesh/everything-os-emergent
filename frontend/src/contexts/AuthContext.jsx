@@ -51,6 +51,7 @@ export function useAuth() {
 export const TABS = [
   { key: "calendar",   label: "Calendar",    roles: ["leadership", "manager", "team", "client"] },
   { key: "tasks",      label: "Tasks",       roles: ["leadership", "manager", "team"] },
+  { key: "timesheets", label: "Timesheets",  roles: ["leadership", "manager", "team"] },
   { key: "projects",   label: "Projects",    roles: ["leadership", "manager", "team", "client"] },
   { key: "team",       label: "Team",        roles: ["leadership", "manager", "team"] },
   { key: "clients",    label: "Clients",     roles: ["leadership", "manager"] },

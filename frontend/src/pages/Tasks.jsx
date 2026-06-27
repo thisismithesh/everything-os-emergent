@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import PageHeader from "@/components/layout/PageHeader";
 import api from "@/lib/api";
 import { Avatar, AvatarStack, StatusPill, Empty } from "@/components/ui-bits";
 import { Plus, Download, Search, ChevronRight, ChevronDown } from "lucide-react";
+import TaskDetailDrawer from "@/components/TaskDetailDrawer";
 
 const STATUSES = ["todo", "in_progress", "review", "blocked", "done"];
 
@@ -17,6 +19,10 @@ export default function Tasks() {
   const [view, setView] = useState("list"); // list | kanban
   const [showAdd, setShowAdd] = useState(false);
   const [expanded, setExpanded] = useState({});
+  const [searchParams, setSearchParams] = useSearchParams();
+  const drawerTaskId = searchParams.get("task");
+  const openDrawer = (id) => setSearchParams({ task: id });
+  const closeDrawer = () => { searchParams.delete("task"); setSearchParams(searchParams); };
 
   const load = () =>
     Promise.all([
@@ -112,7 +118,7 @@ export default function Tasks() {
                     const open = !!expanded[t.id];
                     return (
                       <FragmentRow key={t.id} task={t} subs={subs} open={open} setOpen={() => setExpanded((x) => ({...x, [t.id]: !x[t.id]}))}
-                        projectById={projectById} userById={userById} updateStatus={updateStatus} />
+                        projectById={projectById} userById={userById} updateStatus={updateStatus} onOpen={openDrawer} />
                     );
                   })}
                 </tbody>
@@ -120,23 +126,24 @@ export default function Tasks() {
             </div>
           )
         ) : (
-          <Kanban tasks={visible} userById={userById} projectById={projectById} updateStatus={updateStatus} />
+          <Kanban tasks={visible} userById={userById} projectById={projectById} updateStatus={updateStatus} onOpen={openDrawer} />
         )}
       </div>
 
       {showAdd && <AddTaskModal projects={projects} users={users} onClose={() => setShowAdd(false)} onSaved={load} />}
+      {drawerTaskId && <TaskDetailDrawer taskId={drawerTaskId} users={users} onClose={closeDrawer} onChanged={load} />}
     </>
   );
 }
 
-function FragmentRow({ task, subs, open, setOpen, projectById, userById, updateStatus }) {
+function FragmentRow({ task, subs, open, setOpen, projectById, userById, updateStatus, onOpen }) {
   const t = task;
   const assignees = (t.assignees || []).map((id) => userById[id]).filter(Boolean);
   const p = t.project_id ? projectById[t.project_id] : null;
   return (
     <>
-      <tr className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]" data-testid={`task-row-${t.id}`}>
-        <td className="px-4 py-3 w-8">
+      <tr className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)] cursor-pointer" data-testid={`task-row-${t.id}`} onClick={() => onOpen(t.id)}>
+        <td className="px-4 py-3 w-8" onClick={(e)=>e.stopPropagation()}>
           {subs.length > 0 ? (
             <button onClick={setOpen} data-testid={`task-expand-${t.id}`}>
               {open ? <ChevronDown className="w-4 h-4 text-[var(--text-tertiary)]" /> : <ChevronRight className="w-4 h-4 text-[var(--text-tertiary)]" />}
@@ -175,13 +182,30 @@ function FragmentRow({ task, subs, open, setOpen, projectById, userById, updateS
   );
 }
 
-function Kanban({ tasks, userById, projectById, updateStatus }) {
+function Kanban({ tasks, userById, projectById, updateStatus, onOpen }) {
   const cols = ["todo","in_progress","review","blocked","done"];
   const labels = { todo: "To do", in_progress: "In progress", review: "In review", blocked: "Blocked", done: "Done" };
+  const [dragOver, setDragOver] = useState(null);
+  const onDragStart = (e, t) => { e.dataTransfer.setData("text/task-id", t.id); e.dataTransfer.effectAllowed = "move"; };
+  const onDrop = async (e, col) => {
+    e.preventDefault();
+    setDragOver(null);
+    const id = e.dataTransfer.getData("text/task-id");
+    if (!id) return;
+    const task = tasks.find((x) => x.id === id);
+    if (task && task.status !== col) await updateStatus(task, col);
+  };
   return (
     <div className="grid grid-cols-1 md:grid-cols-5 gap-3" data-testid="tasks-kanban">
       {cols.map((c) => (
-        <div key={c} className="kanban-col rounded-md p-2 min-h-[300px]">
+        <div
+          key={c}
+          className={`kanban-col rounded-md p-2 min-h-[300px] transition-colors ${dragOver===c ? "ring-2 ring-[var(--brand)] ring-offset-2" : ""}`}
+          data-testid={`kanban-col-${c}`}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(c); }}
+          onDragLeave={() => setDragOver((cur) => cur === c ? null : cur)}
+          onDrop={(e) => onDrop(e, c)}
+        >
           <div className="flex items-center justify-between px-2 py-1.5">
             <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold">{labels[c]}</div>
             <div className="text-xs text-[var(--text-tertiary)]">{tasks.filter((t)=>t.status===c).length}</div>
@@ -191,17 +215,19 @@ function Kanban({ tasks, userById, projectById, updateStatus }) {
               const assignees = (t.assignees||[]).map((id)=>userById[id]).filter(Boolean);
               const p = t.project_id ? projectById[t.project_id] : null;
               return (
-                <div key={t.id} data-testid={`kanban-card-${t.id}`} className="bg-white border border-[var(--border-default)] rounded-md p-3 hover:shadow-sm transition-shadow">
+                <div
+                  key={t.id}
+                  draggable
+                  onDragStart={(e) => onDragStart(e, t)}
+                  onClick={() => onOpen && onOpen(t.id)}
+                  data-testid={`kanban-card-${t.id}`}
+                  className="bg-white border border-[var(--border-default)] rounded-md p-3 hover:shadow-sm transition-shadow cursor-grab active:cursor-grabbing"
+                >
                   <div className="text-sm font-medium text-[var(--text-primary)] leading-tight">{t.name}</div>
                   {p && <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] mt-1.5">{p.name}</div>}
                   <div className="flex items-center justify-between mt-3">
                     <AvatarStack users={assignees} size={20} />
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-[var(--text-tertiary)]">{t.latest_deadline || "—"}</span>
-                      <select value={t.status} onChange={(e)=>updateStatus(t,e.target.value)} className="text-[10px] bg-transparent">
-                        {cols.map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </div>
+                    <span className="text-[10px] text-[var(--text-tertiary)]">{t.latest_deadline || "—"}</span>
                   </div>
                 </div>
               );

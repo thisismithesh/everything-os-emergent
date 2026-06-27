@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import PageHeader from "@/components/layout/PageHeader";
 import api from "@/lib/api";
 import { Avatar, AvatarStack, StatusPill, PriorityPill, HealthDot, Empty } from "@/components/ui-bits";
 import { Share2, Globe, Download, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import Comments from "@/components/Comments";
+import TaskDetailDrawer from "@/components/TaskDetailDrawer";
 
 const TYPE_LABEL = { billable_regular: "Billable", billable_retainer: "Retainer", non_billable: "Non-billable" };
 
@@ -19,6 +21,17 @@ export default function ProjectDetail() {
   const [tab, setTab] = useState("overview");
   const [taskView, setTaskView] = useState("list");
   const [shareCopied, setShareCopied] = useState(false);
+  const [drawerTaskId, setDrawerTaskId] = useState(null);
+
+  const updateTaskStatus = async (task, status) => {
+    if (task.status === status) return;
+    await api.patch(`/tasks/${task.id}`, { status }).catch(() => {});
+    await load();
+  };
+  const patchTaskDates = async (task_id, patch) => {
+    await api.patch(`/tasks/${task_id}`, patch).catch(() => {});
+    await load();
+  };
 
   const load = async () => {
     const p = await api.get(`/projects/${id}`).then((r)=>r.data);
@@ -192,6 +205,8 @@ export default function ProjectDetail() {
           </Section>
         )}
       </div>
+
+      {drawerTaskId && <TaskDetailDrawer taskId={drawerTaskId} users={users} onClose={()=>setDrawerTaskId(null)} onChanged={load} />}
     </>
   );
 }
@@ -224,7 +239,7 @@ function Row({ k, v }) {
   );
 }
 
-function TaskList({ tasks, userById }) {
+function TaskList({ tasks, userById, onOpen }) {
   return (
     <div className="bg-white border border-[var(--border-default)] rounded-md overflow-hidden">
       <table className="w-full text-sm">
@@ -240,7 +255,7 @@ function TaskList({ tasks, userById }) {
         </thead>
         <tbody>
           {tasks.map((t)=> (
-            <tr key={t.id} className="border-b border-[var(--border-subtle)]">
+            <tr key={t.id} className="border-b border-[var(--border-subtle)] cursor-pointer hover:bg-[var(--bg-surface-hover)]" onClick={()=>onOpen && onOpen(t.id)} data-testid={`pd-task-row-${t.id}`}>
               <td className="px-4 py-3 font-medium">{t.name}</td>
               <td className="px-4 py-3"><AvatarStack users={(t.assignees||[]).map(id=>userById[id]).filter(Boolean)} /></td>
               <td className="px-4 py-3"><StatusPill status={t.status} /></td>
@@ -255,20 +270,34 @@ function TaskList({ tasks, userById }) {
   );
 }
 
-function TaskKanban({ tasks, userById }) {
+function TaskKanban({ tasks, userById, onOpen, updateStatus }) {
   const cols = ["todo","in_progress","review","blocked","done"];
   const labels = { todo: "To do", in_progress: "In progress", review: "In review", blocked: "Blocked", done: "Done" };
+  const [dragOver, setDragOver] = useState(null);
+  const onDragStart = (e, t) => { e.dataTransfer.setData("text/task-id", t.id); e.dataTransfer.effectAllowed = "move"; };
+  const onDrop = async (e, col) => {
+    e.preventDefault(); setDragOver(null);
+    const id = e.dataTransfer.getData("text/task-id");
+    const task = tasks.find((x) => x.id === id);
+    if (task && task.status !== col) await updateStatus(task, col);
+  };
   return (
-    <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+    <div className="grid grid-cols-1 md:grid-cols-5 gap-3" data-testid="pd-tasks-kanban">
       {cols.map((c) => (
-        <div key={c} className="kanban-col rounded-md p-2 min-h-[260px]">
+        <div key={c} className={`kanban-col rounded-md p-2 min-h-[260px] transition-colors ${dragOver===c ? "ring-2 ring-[var(--brand)] ring-offset-2" : ""}`}
+          data-testid={`pd-kanban-col-${c}`}
+          onDragOver={(e)=>{ e.preventDefault(); setDragOver(c); }}
+          onDragLeave={()=> setDragOver((cur)=> cur===c ? null : cur)}
+          onDrop={(e)=> onDrop(e, c)}>
           <div className="flex items-center justify-between px-2 py-1.5">
             <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold">{labels[c]}</div>
             <div className="text-xs text-[var(--text-tertiary)]">{tasks.filter((t)=>t.status===c).length}</div>
           </div>
           <div className="space-y-2">
             {tasks.filter((t)=>t.status===c).map((t) => (
-              <div key={t.id} className="bg-white border border-[var(--border-default)] rounded-md p-3">
+              <div key={t.id} draggable onDragStart={(e)=>onDragStart(e,t)} onClick={()=>onOpen && onOpen(t.id)}
+                className="bg-white border border-[var(--border-default)] rounded-md p-3 cursor-grab active:cursor-grabbing"
+                data-testid={`pd-kanban-card-${t.id}`}>
                 <div className="text-sm font-medium leading-tight">{t.name}</div>
                 <div className="flex items-center justify-between mt-3">
                   <AvatarStack users={(t.assignees||[]).map(id=>userById[id]).filter(Boolean)} size={20} />
@@ -283,7 +312,7 @@ function TaskKanban({ tasks, userById }) {
   );
 }
 
-function TaskGantt({ tasks }) {
+function TaskGantt({ tasks, onOpen, onPatch }) {
   const dates = useMemo(() => {
     const all = tasks.flatMap((t) => [t.original_deadline, t.latest_deadline].filter(Boolean));
     if (all.length === 0) return [];
@@ -296,6 +325,8 @@ function TaskGantt({ tasks }) {
   const colW = 18;
   const start = dates[0];
   const idx = (iso) => Math.round((new Date(iso) - start) / (1000*60*60*24));
+  const dateAt = (i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d.toISOString().slice(0,10); };
+
   return (
     <div className="bg-white border border-[var(--border-default)] rounded-md overflow-x-auto">
       <div className="min-w-fit">
@@ -312,16 +343,79 @@ function TaskGantt({ tasks }) {
         {tasks.map((t) => {
           const s = t.original_deadline ? idx(t.original_deadline) - 3 : 0;
           const e = t.latest_deadline ? idx(t.latest_deadline) : s + 3;
-          const left = Math.max(0, s); const w = Math.max(1, (e - left + 1)) * colW;
+          const left = Math.max(0, s); const w = Math.max(1, (e - left + 1));
           return (
-            <div key={t.id} className="flex items-center border-b border-[var(--border-subtle)]">
-              <div className="w-56 shrink-0 px-4 py-2 border-r border-[var(--border-default)] text-sm font-medium">{t.name}</div>
-              <div className="relative" style={{ width: dates.length * colW, height: 30 }}>
-                <div className="absolute top-1/2 -translate-y-1/2 rounded-sm" style={{ left: left*colW, width: w, height: 14, background: t.status === "done" ? "#10B981" : "#0A0A0A" }} />
-              </div>
-            </div>
+            <GanttRow key={t.id} task={t} colW={colW} totalCols={dates.length} left={left} width={w} dateAt={dateAt} onOpen={onOpen} onPatch={onPatch} />
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function GanttRow({ task, colW, totalCols, left, width, dateAt, onOpen, onPatch }) {
+  const [lp, setLp] = useState(left);
+  const [wd, setWd] = useState(width);
+  const drag = useRef(null);
+
+  useEffect(() => { setLp(left); setWd(width); }, [left, width]);
+
+  const onMouseDownMove = (e) => {
+    e.stopPropagation();
+    drag.current = { mode: "move", startX: e.clientX, l0: lp, w0: wd };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+  const onMouseDownResize = (e) => {
+    e.stopPropagation();
+    drag.current = { mode: "resize", startX: e.clientX, l0: lp, w0: wd };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+  const onMove = (e) => {
+    if (!drag.current) return;
+    const dx = e.clientX - drag.current.startX;
+    const cells = Math.round(dx / colW);
+    if (drag.current.mode === "move") {
+      const next = Math.max(0, Math.min(totalCols - drag.current.w0, drag.current.l0 + cells));
+      setLp(next);
+    } else {
+      const next = Math.max(1, Math.min(totalCols - drag.current.l0, drag.current.w0 + cells));
+      setWd(next);
+    }
+  };
+  const onUp = async () => {
+    window.removeEventListener("mousemove", onMove);
+    window.removeEventListener("mouseup", onUp);
+    if (!drag.current) return;
+    const mode = drag.current.mode;
+    drag.current = null;
+    const newStart = dateAt(lp);
+    const newEnd = dateAt(lp + wd - 1);
+    if (mode === "move") {
+      await onPatch(task.id, { original_deadline: newStart, latest_deadline: newEnd });
+    } else {
+      await onPatch(task.id, { latest_deadline: newEnd });
+    }
+  };
+
+  return (
+    <div className="flex items-center border-b border-[var(--border-subtle)]">
+      <div className="w-56 shrink-0 px-4 py-2 border-r border-[var(--border-default)] text-sm font-medium cursor-pointer hover:underline" onClick={()=>onOpen && onOpen(task.id)}>{task.name}</div>
+      <div className="relative" style={{ width: totalCols * colW, height: 30 }} data-testid={`gantt-track-${task.id}`}>
+        <div
+          className="absolute top-1/2 -translate-y-1/2 rounded-sm group"
+          style={{ left: lp*colW, width: wd*colW, height: 16, background: task.status === "done" ? "#10B981" : "#0A0A0A", cursor: "grab" }}
+          onMouseDown={onMouseDownMove}
+          data-testid={`gantt-bar-${task.id}`}
+        >
+          <div
+            onMouseDown={onMouseDownResize}
+            className="absolute right-0 top-0 bottom-0 w-2 rounded-r-sm bg-white/40 hover:bg-white/70"
+            style={{ cursor: "ew-resize" }}
+            data-testid={`gantt-resize-${task.id}`}
+          />
+        </div>
       </div>
     </div>
   );

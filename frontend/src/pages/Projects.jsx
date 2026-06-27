@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import PageHeader from "@/components/layout/PageHeader";
 import api from "@/lib/api";
@@ -149,7 +149,15 @@ export default function Projects() {
             </table>
           </div>
         ) : (
-          <GanttView projects={visible} />
+          <GanttView projects={visible} onPatch={async (pid, patch)=>{
+            const target = projects.find((x)=>x.id===pid);
+            if (!target) return;
+            const body = { ...target, ...patch };
+            // strip server-side fields
+            delete body.id; delete body.share_token; delete body.public_enabled; delete body.created_at;
+            await api.patch(`/projects/${pid}`, body).catch(()=>{});
+            load();
+          }} />
         )}
       </div>
 
@@ -158,7 +166,7 @@ export default function Projects() {
   );
 }
 
-function GanttView({ projects }) {
+function GanttView({ projects, onPatch }) {
   // Build a date range across all projects
   const dates = useMemo(() => {
     const all = projects.flatMap((p) => [p.start_date, p.end_date].filter(Boolean));
@@ -180,6 +188,7 @@ function GanttView({ projects }) {
     const d = new Date(iso);
     return Math.round((d - start) / (1000*60*60*24));
   };
+  const dateAt = (i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d.toISOString().slice(0,10); };
 
   // Tick every 7 days
   return (
@@ -199,20 +208,82 @@ function GanttView({ projects }) {
           if (!p.start_date || !p.end_date) return null;
           const s = idx(p.start_date);
           const e = idx(p.end_date);
-          const w = Math.max(1, (e - s + 1)) * colW;
+          const w = Math.max(1, (e - s + 1));
           return (
-            <div key={p.id} className="flex items-center border-b border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]">
-              <div className="w-64 shrink-0 px-4 py-3 border-r border-[var(--border-default)]">
-                <Link to={`/projects/${p.id}`} className="text-sm font-medium hover:underline">{p.name}</Link>
-                <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold mt-0.5">{TYPE_LABEL[p.type]}</div>
-              </div>
-              <div className="relative" style={{ width: dates.length * colW, height: 36 }}>
-                <div className="absolute top-1/2 -translate-y-1/2 rounded-sm bg-[var(--accent)]"
-                  style={{ left: s * colW, width: w, height: 18 }} />
-              </div>
-            </div>
+            <ProjectGanttRow key={p.id} project={p} colW={colW} totalCols={dates.length} left={s} width={w} dateAt={dateAt} onPatch={onPatch} />
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function ProjectGanttRow({ project, colW, totalCols, left, width, dateAt, onPatch }) {
+  const [lp, setLp] = useState(left);
+  const [wd, setWd] = useState(width);
+  const drag = useRef(null);
+
+  useEffect(() => { setLp(left); setWd(width); }, [left, width]);
+
+  const onMouseDownMove = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    drag.current = { mode: "move", startX: e.clientX, l0: lp, w0: wd };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+  const onMouseDownResize = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    drag.current = { mode: "resize", startX: e.clientX, l0: lp, w0: wd };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+  const onMove = (e) => {
+    if (!drag.current) return;
+    const dx = e.clientX - drag.current.startX;
+    const cells = Math.round(dx / colW);
+    if (drag.current.mode === "move") {
+      const next = Math.max(0, Math.min(totalCols - drag.current.w0, drag.current.l0 + cells));
+      setLp(next);
+    } else {
+      const next = Math.max(1, Math.min(totalCols - drag.current.l0, drag.current.w0 + cells));
+      setWd(next);
+    }
+  };
+  const onUp = async () => {
+    window.removeEventListener("mousemove", onMove);
+    window.removeEventListener("mouseup", onUp);
+    if (!drag.current) return;
+    const mode = drag.current.mode;
+    drag.current = null;
+    const newStart = dateAt(lp);
+    const newEnd = dateAt(lp + wd - 1);
+    if (mode === "move") {
+      await onPatch(project.id, { start_date: newStart, end_date: newEnd });
+    } else {
+      await onPatch(project.id, { end_date: newEnd });
+    }
+  };
+
+  return (
+    <div className="flex items-center border-b border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]">
+      <div className="w-64 shrink-0 px-4 py-3 border-r border-[var(--border-default)]">
+        <Link to={`/projects/${project.id}`} className="text-sm font-medium hover:underline">{project.name}</Link>
+        <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold mt-0.5">{TYPE_LABEL[project.type]}</div>
+      </div>
+      <div className="relative" style={{ width: totalCols * colW, height: 36 }} data-testid={`proj-gantt-track-${project.id}`}>
+        <div
+          className="absolute top-1/2 -translate-y-1/2 rounded-sm bg-[var(--accent)]"
+          style={{ left: lp*colW, width: wd*colW, height: 18, cursor: "grab" }}
+          onMouseDown={onMouseDownMove}
+          data-testid={`proj-gantt-bar-${project.id}`}
+        >
+          <div
+            onMouseDown={onMouseDownResize}
+            className="absolute right-0 top-0 bottom-0 w-2 rounded-r-sm bg-white/40 hover:bg-white/70"
+            style={{ cursor: "ew-resize" }}
+            data-testid={`proj-gantt-resize-${project.id}`}
+          />
+        </div>
       </div>
     </div>
   );
