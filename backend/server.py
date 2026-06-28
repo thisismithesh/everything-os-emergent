@@ -1,4 +1,4 @@
-"""Studio PM — FastAPI backend (single-file for MVP).
+"""Everything OS — FastAPI backend (single-file for MVP).
 
 Implements:
 - JWT email/password auth + Emergent Google OAuth (session_token cookie)
