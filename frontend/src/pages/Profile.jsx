@@ -42,7 +42,7 @@ export default function Profile() {
     try {
       const reader = new FileReader();
       reader.onload = async (event) => {
-        const base64 = event.target?.result as string;
+        const base64 = event.target?.result;
         await save({ avatar: base64 });
         setUploadingAvatar(false);
       };
