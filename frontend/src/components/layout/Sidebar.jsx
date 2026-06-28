@@ -5,6 +5,7 @@ import {
   Briefcase, Building, LayoutDashboard, Wallet, User as UserIcon, LogOut, Clock, Home as HomeIcon
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useEffect, useState } from "react";
 import NotificationBell from "@/components/NotificationBell";
 import TimerBar from "@/components/TimerBar";
 
@@ -24,6 +25,14 @@ const GROUPS = [
 export default function Sidebar() {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const [appIcon, setAppIcon] = useState("");
+
+  useEffect(() => {
+    // Load custom app icon from localStorage
+    const icon = localStorage.getItem("app_heading_icon");
+    if (icon) setAppIcon(icon);
+  }, []);
+
   if (!user) return null;
 
   const visible = (k) => {
@@ -39,8 +48,12 @@ export default function Sidebar() {
       <div className="px-6 py-5 border-b border-[var(--border-default)]">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="w-8 h-8 bg-[var(--brand)] rounded-sm flex items-center justify-center">
-              <span className="text-white text-sm font-black tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>E</span>
+            <div className="w-8 h-8 bg-[var(--brand)] rounded-sm flex items-center justify-center overflow-hidden">
+              {appIcon ? (
+                <img src={appIcon} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-white text-sm font-black tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>E</span>
+              )}
             </div>
             <div className="min-w-0">
               <div className="text-sm font-bold tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>Everything OS</div>

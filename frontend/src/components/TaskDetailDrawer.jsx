@@ -94,13 +94,13 @@ export default function TaskDetailDrawer({ taskId, users = [], onClose, onChange
                 <datalist id="task-drawer-category-list">{categories.map((c)=><option key={c} value={c} />)}</datalist>
               </Field>
               <Field label="Original deadline">
-                <input type="date" value={task.original_deadline || ""} onChange={(e) => save({ original_deadline: e.target.value || null })} className="w-full text-sm border border-[var(--border-default)] rounded-md px-2 py-1.5" data-testid="task-drawer-original-deadline" />
+                <input type="date" value={task.original_deadline || ""} onChange={(e) => save({ original_deadline: e.target.value || null })} className="w-full text-sm border border-[var(--border-default)] rounded-md px-2 py-1.5 cursor-pointer" data-testid="task-drawer-original-deadline" />
               </Field>
               <Field label={task.status === "done" ? "Completion date" : "Latest deadline"}>
                 <input type="date"
                   value={(task.status === "done" ? (task.completion_date || task.latest_deadline) : task.latest_deadline) || ""}
                   onChange={(e) => save(task.status === "done" ? { completion_date: e.target.value || null } : { latest_deadline: e.target.value || null })}
-                  className="w-full text-sm border border-[var(--border-default)] rounded-md px-2 py-1.5"
+                  className="w-full text-sm border border-[var(--border-default)] rounded-md px-2 py-1.5 cursor-pointer"
                   data-testid="task-drawer-latest-deadline" />
               </Field>
               <Field label="Estimate (h)">
@@ -112,14 +112,14 @@ export default function TaskDetailDrawer({ taskId, users = [], onClose, onChange
             </section>
 
             <section>
-              <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold mb-1.5">Assignees</div>
+              <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold mb-2">Assignees</div>
               <div className="flex flex-wrap gap-1.5">
                 {users.filter((u) => u.role !== "client").map((u) => {
                   const on = (task.assignees || []).includes(u.id);
                   return (
                     <button key={u.id} onClick={() => save({ assignees: on ? task.assignees.filter((x) => x !== u.id) : [...(task.assignees || []), u.id] })}
                       data-testid={`task-drawer-assignee-${u.id}`}
-                      className={`flex items-center gap-2 text-xs rounded-full pl-1 pr-2.5 py-0.5 border ${on ? "bg-[var(--brand)] text-white border-[var(--brand)]" : "bg-white text-[var(--text-secondary)] border-[var(--border-default)]"}`}>
+                      className={`flex items-center gap-2 text-xs font-medium rounded-full px-3 py-1.5 border transition-all ${on ? "bg-[var(--brand)] text-white border-[var(--brand)]" : "bg-white text-[var(--text-primary)] border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)]"}`}>
                       <Avatar user={u} size={18} />
                       {u.name.split(" ")[0]}
                     </button>

@@ -75,9 +75,15 @@ export default function Comments({ entityType, entityId, users = [] }) {
     const upto = v.slice(0, caret);
     const after = v.slice(caret);
     const replaced = upto.replace(/@([A-Za-z]*)$/, `@${(u.name || "").split(" ")[0]} `);
-    setBody(replaced + after);
+    const newBody = replaced + after;
+    setBody(newBody);
     setShowSuggest(false);
-    setTimeout(() => taRef.current?.focus(), 0);
+    // Set cursor position after the mention and space
+    const newCursorPos = replaced.length;
+    setTimeout(() => {
+      taRef.current?.focus();
+      taRef.current?.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
   };
 
   const submit = async (e) => {

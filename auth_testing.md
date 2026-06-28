@@ -1,4 +1,4 @@
-# Auth Testing Playbook (Studio PM)
+# Auth Testing Playbook (Everything OS)
 
 ## Custom Email/Password (JWT) Auth
 Endpoints (prefixed with `/api/auth`):
@@ -16,11 +16,9 @@ curl -c c.txt -X POST $API/api/auth/login -H 'Content-Type: application/json' \
 curl -b c.txt $API/api/auth/me
 ```
 
-### Seed users (auto-created on startup)
-- admin@studio.com / admin123 — leadership
-- maya@studio.com / password123 — manager
-- arjun@studio.com / password123 — team
-- client@acme.com / password123 — client
+### Signup and Testing
+Use the `/register` endpoint to create test accounts, or sign up via the UI. No pre-seeded test credentials.
+
 
 ## Emergent Google OAuth
 - Frontend builds redirect URL dynamically: `window.location.origin + '/dashboard'`

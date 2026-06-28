@@ -180,16 +180,43 @@ export default function ProjectDetail() {
               taskView === "list" ? <TaskList tasks={tasks} userById={userById} onOpen={setDrawerTaskId} /> :
               taskView === "kanban" ? <TaskKanban tasks={tasks} userById={userById} onOpen={setDrawerTaskId} updateStatus={updateTaskStatus} /> :
               <GanttTimeline
-                rows={tasks.filter((tk)=>tk.original_deadline || tk.latest_deadline).map((tk)=> ({
-                  id: tk.id,
-                  label: tk.name,
-                  sublabel: tk.category,
-                  start: tk.original_deadline || tk.latest_deadline,
-                  end: tk.latest_deadline || tk.original_deadline,
-                  color: tk.status === "done" ? "#10B981" : tk.status === "blocked" ? "#EF4444" : "#0A0A0A",
-                  onClick: () => setDrawerTaskId(tk.id),
-                }))}
-                onPatch={async (tid, { start, end }) => { await patchTaskDates(tid, { original_deadline: start, latest_deadline: end }); }}
+                rows={(() => {
+                  // Group tasks by category
+                  const grouped = {};
+                  tasks.filter((tk)=>tk.original_deadline || tk.latest_deadline).forEach((tk) => {
+                    const cat = tk.category || "Uncategorized";
+                    if (!grouped[cat]) grouped[cat] = [];
+                    grouped[cat].push(tk);
+                  });
+                  // Convert to rows with min/max dates per category
+                  return Object.entries(grouped).map(([cat, catTasks]) => {
+                    const allDates = catTasks.flatMap((t) => [t.original_deadline, t.latest_deadline].filter(Boolean));
+                    const minDate = allDates.length > 0 ? allDates.reduce((a,b)=> a<b?a:b) : null;
+                    const maxDate = allDates.length > 0 ? allDates.reduce((a,b)=> a>b?a:b) : null;
+                    return {
+                      id: cat,
+                      label: cat,
+                      sublabel: `${catTasks.length} task${catTasks.length !== 1 ? 's' : ''}`,
+                      start: minDate || (catTasks[0]?.original_deadline || catTasks[0]?.latest_deadline),
+                      end: maxDate || (catTasks[0]?.latest_deadline || catTasks[0]?.original_deadline),
+                      color: "#2563EB",
+                      secondary: catTasks.map((t) => ({
+                        start: t.original_deadline || t.latest_deadline,
+                        end: t.latest_deadline || t.original_deadline,
+                        color: t.status === "done" ? "#10B981" : t.status === "blocked" ? "#EF4444" : "#6B7280",
+                        title: t.name,
+                      })),
+                      onClick: () => {/* expand/collapse or show category details */},
+                    };
+                  });
+                })()}
+                onPatch={async (catId, { start, end }) => { 
+                  // Find all tasks in this category and update their dates
+                  const catTasks = tasks.filter((t) => (t.category || "Uncategorized") === catId);
+                  for (const t of catTasks) {
+                    await patchTaskDates(t.id, { original_deadline: start, latest_deadline: end });
+                  }
+                }}
                 emptyMessage="Add deadlines to your tasks to see the Gantt view."
               />
             )}
@@ -232,7 +259,7 @@ export default function ProjectDetail() {
                         <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] truncate">{m.role || m.title}</div>
                       </div>
                       {(m.role === "Project Owner" || m.role === "Project Manager") && (
-                        <span className="text-[9px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded bg-[var(--brand)] text-white">{m.role === "Project Owner" ? "Owner" : "Mgr"}</span>
+                        <span className="text-[9px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded bg-[var(--brand)] text-white">{m.role === "Project Owner" ? "Owner" : "PM"}</span>
                       )}
                     </div>
                   ))}
@@ -369,117 +396,6 @@ function TaskKanban({ tasks, userById, onOpen, updateStatus }) {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function TaskGantt({ tasks, onOpen, onPatch }) {
-  const dates = useMemo(() => {
-    const all = tasks.flatMap((t) => [t.original_deadline, t.latest_deadline].filter(Boolean));
-    if (all.length === 0) return [];
-    const min = new Date(all.reduce((a,b)=> a<b?a:b)); min.setDate(min.getDate()-7);
-    const max = new Date(all.reduce((a,b)=> a>b?a:b)); max.setDate(max.getDate()+7);
-    const out = []; for (let d=new Date(min); d<=max; d.setDate(d.getDate()+1)) out.push(new Date(d));
-    return out;
-  }, [tasks]);
-  if (dates.length === 0) return <Empty title="No deadlines" hint="Add deadlines to your tasks to see the Gantt view." />;
-  const colW = 18;
-  const start = dates[0];
-  const idx = (iso) => Math.round((new Date(iso) - start) / (1000*60*60*24));
-  const dateAt = (i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d.toISOString().slice(0,10); };
-
-  return (
-    <div className="bg-white border border-[var(--border-default)] rounded-md overflow-x-auto">
-      <div className="min-w-fit">
-        <div className="flex sticky top-0 bg-white z-10 border-b border-[var(--border-default)]">
-          <div className="w-56 shrink-0 px-4 py-2 text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold border-r border-[var(--border-default)]">Task</div>
-          <div className="flex">
-            {dates.map((d,i)=>(
-              <div key={i} className="text-[10px] text-[var(--text-tertiary)] text-center border-r border-[var(--border-subtle)] py-2" style={{ width: colW }}>
-                {d.getDate() === 1 || i===0 ? d.toLocaleDateString(undefined, { month:"short" }) : (d.getDay()===1 ? d.getDate() : "")}
-              </div>
-            ))}
-          </div>
-        </div>
-        {tasks.map((t) => {
-          const s = t.original_deadline ? idx(t.original_deadline) - 3 : 0;
-          const e = t.latest_deadline ? idx(t.latest_deadline) : s + 3;
-          const left = Math.max(0, s); const w = Math.max(1, (e - left + 1));
-          return (
-            <GanttRow key={t.id} task={t} colW={colW} totalCols={dates.length} left={left} width={w} dateAt={dateAt} onOpen={onOpen} onPatch={onPatch} />
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function GanttRow({ task, colW, totalCols, left, width, dateAt, onOpen, onPatch }) {
-  const [lp, setLp] = useState(left);
-  const [wd, setWd] = useState(width);
-  const lpRef = useRef(left);
-  const wdRef = useRef(width);
-  const drag = useRef(null);
-
-  useEffect(() => { setLp(left); setWd(width); lpRef.current = left; wdRef.current = width; }, [left, width]);
-
-  const onMouseDownMove = (e) => {
-    e.stopPropagation();
-    drag.current = { mode: "move", startX: e.clientX, l0: lpRef.current, w0: wdRef.current };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  };
-  const onMouseDownResize = (e) => {
-    e.stopPropagation();
-    drag.current = { mode: "resize", startX: e.clientX, l0: lpRef.current, w0: wdRef.current };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  };
-  const onMove = (e) => {
-    if (!drag.current) return;
-    const dx = e.clientX - drag.current.startX;
-    const cells = Math.round(dx / colW);
-    if (drag.current.mode === "move") {
-      const next = Math.max(0, Math.min(totalCols - drag.current.w0, drag.current.l0 + cells));
-      lpRef.current = next; setLp(next);
-    } else {
-      const next = Math.max(1, Math.min(totalCols - drag.current.l0, drag.current.w0 + cells));
-      wdRef.current = next; setWd(next);
-    }
-  };
-  const onUp = async () => {
-    window.removeEventListener("mousemove", onMove);
-    window.removeEventListener("mouseup", onUp);
-    if (!drag.current) return;
-    const mode = drag.current.mode;
-    drag.current = null;
-    const newStart = dateAt(lpRef.current);
-    const newEnd = dateAt(lpRef.current + wdRef.current - 1);
-    if (mode === "move") {
-      await onPatch(task.id, { original_deadline: newStart, latest_deadline: newEnd });
-    } else {
-      await onPatch(task.id, { latest_deadline: newEnd });
-    }
-  };
-
-  return (
-    <div className="flex items-center border-b border-[var(--border-subtle)]">
-      <div className="w-56 shrink-0 px-4 py-2 border-r border-[var(--border-default)] text-sm font-medium cursor-pointer hover:underline" onClick={()=>onOpen && onOpen(task.id)}>{task.name}</div>
-      <div className="relative" style={{ width: totalCols * colW, height: 30 }} data-testid={`gantt-track-${task.id}`}>
-        <div
-          className="absolute top-1/2 -translate-y-1/2 rounded-sm group"
-          style={{ left: lp*colW, width: wd*colW, height: 16, background: task.status === "done" ? "#10B981" : "#0A0A0A", cursor: "grab" }}
-          onMouseDown={onMouseDownMove}
-          data-testid={`gantt-bar-${task.id}`}
-        >
-          <div
-            onMouseDown={onMouseDownResize}
-            className="absolute right-0 top-0 bottom-0 w-2 rounded-r-sm bg-white/40 hover:bg-white/70"
-            style={{ cursor: "ew-resize" }}
-            data-testid={`gantt-resize-${task.id}`}
-          />
-        </div>
-      </div>
     </div>
   );
 }

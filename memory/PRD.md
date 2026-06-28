@@ -1,4 +1,4 @@
-# Studio PM - Project Management for Design Agency
+# Everything OS - Project Management for Design Agency
 
 ## Original problem
 Build a project management for a design agency with team (regular team member, manager, leadership) and clients. Left sidebar with role-gated tabs: Calendar, Tasks, Projects, Team, Clients, Marketing, Sales, Company, Dashboard, Financials, Login/Profile.
@@ -19,11 +19,9 @@ Build a project management for a design agency with team (regular team member, m
 - Marketing/Sales/Company/Financials scaffolded as access-controlled placeholders
 - Profile page with editable name/title/team/avatar
 
-## Test credentials (auto-seeded)
-- Leadership: admin@studio.com / admin123
-- Manager:    maya@studio.com / password123
-- Team:       arjun@studio.com / password123
-- Client:     client@acme.com / password123
+## Test credentials
+No pre-seeded test accounts. Create your account via signup.
+
 
 ## Tech
 - Backend: FastAPI + Motor (MongoDB) + bcrypt + PyJWT + httpx

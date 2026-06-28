@@ -97,68 +97,90 @@ export default function GanttTimeline({ rows, onPatch, editable = true, padDays 
           Today
         </button>
       </div>
-      <div ref={scrollerRef} className="overflow-x-auto" style={{ maxHeight: "65vh" }}>
-        <div style={{ width: labelWidth + dates.length * colW, minWidth: "100%" }}>
-          {/* Header — month band */}
-          <div className="flex sticky top-0 z-20 bg-white border-b border-[var(--border-default)]">
-            <div className="shrink-0 bg-white border-r border-[var(--border-default)]" style={{ width: labelWidth }} />
-            <div className="relative flex" style={{ width: dates.length * colW }}>
-              {monthBands.map((m) => (
-                <div key={m.key}
-                  className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)] border-r border-[var(--border-default)] bg-white sticky"
-                  style={{ width: m.count * colW }}>
-                  {m.label}
-                </div>
-              ))}
-            </div>
-          </div>
-          {/* Header — day band */}
-          <div className="flex sticky z-10 bg-white border-b border-[var(--border-default)]" style={{ top: 24 }}>
-            <div className="shrink-0 bg-white border-r border-[var(--border-default)] px-3 py-1.5 text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold" style={{ width: labelWidth }}>
+      <div style={{ display: "flex", overflow: "hidden", maxHeight: "65vh" }}>
+        {/* Fixed left panel with labels */}
+        <div style={{ width: labelWidth, flexShrink: 0, overflowY: "auto", borderRight: "1px solid var(--border-default)" }}>
+          {/* Header — month band (empty) */}
+          <div style={{ height: 24, borderBottom: "1px solid var(--border-default)", background: "white" }} />
+          {/* Header — day band (Item label) */}
+          <div style={{ height: 40, borderBottom: "1px solid var(--border-default)", background: "white", display: "flex", alignItems: "center" }}>
+            <div className="px-3 py-1.5 text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold w-full">
               Item
             </div>
-            <div className="relative flex" style={{ width: dates.length * colW }}>
-              {dates.map((d, i) => {
-                const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-                const isToday = i === todayIdx;
-                return (
-                  <div key={i}
-                    ref={isToday ? todayRef : null}
-                    className={`text-[10px] text-center border-r py-1.5 ${isWeekend ? "bg-[var(--bg-surface-hover)]" : "bg-white"} ${isToday ? "font-bold" : ""}`}
-                    style={{ width: colW, borderColor: "var(--border-subtle)", color: isToday ? todayAccent : "var(--text-tertiary)" }}
-                  >
-                    <div className="text-[9px] uppercase">{d.toLocaleDateString(undefined, { weekday: "narrow" })}</div>
-                    <div>{d.getDate()}</div>
-                  </div>
-                );
-              })}
-            </div>
           </div>
-          {/* Rows */}
+          {/* Rows labels */}
           {rows.map((row) => (
-            <Row
-              key={row.id}
-              row={row}
-              start={start}
-              colW={colW}
-              labelWidth={labelWidth}
-              totalCols={dates.length}
-              rowHeight={rowHeight}
-              idxOf={idxOf}
-              dateAt={dateAt}
-              todayIdx={todayIdx}
-              todayAccent={todayAccent}
-              editable={editable}
-              onPatch={onPatch}
-            />
+            <div key={row.id} className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)] flex items-stretch" style={{ height: rowHeight }}>
+              <div
+                className="shrink-0 px-3 py-2 cursor-pointer flex-1 flex flex-col justify-center"
+                onClick={() => row.onClick && row.onClick()}
+              >
+                <div className="text-sm font-medium truncate text-[var(--text-primary)]">{row.label}</div>
+                {row.sublabel && <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold truncate">{row.sublabel}</div>}
+              </div>
+            </div>
           ))}
+        </div>
+
+        {/* Scrollable timeline */}
+        <div ref={scrollerRef} className="flex-1 overflow-x-auto overflow-y-hidden">
+          <div style={{ width: dates.length * colW, minWidth: "100%" }}>
+            {/* Header — month band */}
+            <div className="flex sticky top-0 z-20 bg-white border-b border-[var(--border-default)]">
+              <div className="relative flex" style={{ width: dates.length * colW }}>
+                {monthBands.map((m) => (
+                  <div key={m.key}
+                    className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)] border-r border-[var(--border-default)] bg-white sticky"
+                    style={{ width: m.count * colW }}>
+                    {m.label}
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Header — day band */}
+            <div className="flex sticky z-10 bg-white border-b border-[var(--border-default)]" style={{ top: 24 }}>
+              <div className="relative flex" style={{ width: dates.length * colW }}>
+                {dates.map((d, i) => {
+                  const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                  const isToday = i === todayIdx;
+                  return (
+                    <div key={i}
+                      ref={isToday ? todayRef : null}
+                      className={`text-[10px] text-center border-r py-1.5 ${isWeekend ? "bg-[var(--bg-surface-hover)]" : "bg-white"} ${isToday ? "font-bold" : ""}`}
+                      style={{ width: colW, borderColor: "var(--border-subtle)", color: isToday ? todayAccent : "var(--text-tertiary)" }}
+                    >
+                      <div className="text-[9px] uppercase">{d.toLocaleDateString(undefined, { weekday: "narrow" })}</div>
+                      <div>{d.getDate()}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {/* Rows */}
+            {rows.map((row) => (
+              <RowTimeline
+                key={row.id}
+                row={row}
+                start={start}
+                colW={colW}
+                totalCols={dates.length}
+                rowHeight={rowHeight}
+                idxOf={idxOf}
+                dateAt={dateAt}
+                todayIdx={todayIdx}
+                todayAccent={todayAccent}
+                editable={editable}
+                onPatch={onPatch}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function Row({ row, start, colW, labelWidth, totalCols, rowHeight, idxOf, dateAt, todayIdx, todayAccent, editable, onPatch }) {
+function RowTimeline({ row, start, colW, totalCols, rowHeight, idxOf, dateAt, todayIdx, todayAccent, editable, onPatch }) {
   const hasMainBar = !!(row.start && row.end);
   const initLeft = hasMainBar ? idxOf(row.start) : 0;
   const initEnd = hasMainBar ? idxOf(row.end) : initLeft + 3;
@@ -225,16 +247,8 @@ function Row({ row, start, colW, labelWidth, totalCols, rowHeight, idxOf, dateAt
   const color = row.color || "#0A0A0A";
 
   return (
-    <div className="flex items-stretch border-b border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]" data-testid={`gantt-row-${row.id}`}>
-      <div
-        className="shrink-0 px-3 py-2 border-r border-[var(--border-default)] cursor-pointer"
-        style={{ width: labelWidth }}
-        onClick={() => row.onClick && row.onClick()}
-      >
-        <div className="text-sm font-medium truncate text-[var(--text-primary)]">{row.label}</div>
-        {row.sublabel && <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold truncate">{row.sublabel}</div>}
-      </div>
-      <div className="relative" style={{ width: totalCols * colW, height: rowHeight }} data-testid={`gantt-track-${row.id}`}>
+    <div className="flex items-stretch border-b border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)]" data-testid={`gantt-row-${row.id}`} style={{ height: rowHeight }}>
+      <div className="relative w-full" data-testid={`gantt-track-${row.id}`}>
         {/* weekend tint background */}
         {Array.from({ length: totalCols }).map((_, i) => {
           const d = new Date(start); d.setDate(start.getDate()+i);
