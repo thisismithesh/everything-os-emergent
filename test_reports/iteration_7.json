@@ -1,0 +1,51 @@
+{
+  "summary": "Phase 3 (Marketing / Sales / Company) backend + frontend testing. 22/22 pytest cases pass in /app/backend/tests/test_phase3_features.py covering Documents (Plan/Wiki scope isolation), Marketing Tracker kanban statuses, Marketing Materials with posted toggle, Sales Leads (with leadership/manager-only RBAC), Company Posts (3 types + author-only/manager delete), Activities CRUD, and private-per-user Career Journal. 11/11 Playwright UI flows pass: leadership sidebar shows Marketing/Sales/Company, all create/edit modals work on Plan/Tracker/Database/Sales (board+list)/Message board/Activities/Wiki/Journal, team-role correctly sees Marketing+Company but NOT Sales/Dashboard/Financials, and a fresh client-role user sees NONE of Marketing/Sales/Company and all 7 corresponding API endpoints return 403 when called directly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/marketing/materials", "issue": "sort('post_date', -1) lists docs without post_date last/first inconsistently in MongoDB. Acceptable, but documents with null post_date may be ordered unpredictably. Low priority."},
+      {"endpoint": "/api/posts (appreciation)", "issue": "No server-side enforcement that appreciate_user_id is only set when type='appreciation'. The field is accepted on any post type. Frontend gates this, but server is permissive."},
+      {"endpoint": "/api/leads", "issue": "value field is Optional[float] with no >=0 validation; negative deal values are accepted. Pydantic Field(ge=0) recommended."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Sidebar (client role)", "issues": ["Client is redirected to /projects after login while leadership/team land on /home — consistent landing or an explicit role-based default would be cleaner."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase3_features.py",
+    "/app/test_reports/pytest/pytest_phase3_results.xml"
+  ],
+  "action_items": [
+    "(Optional/Low) Add server-side validation: leads.value >=0, posts.appreciate_user_id only on type=appreciation, marketing_materials.post_date sort tiebreaker (created_at).",
+    "(Cleanup) A handful of TEST_-prefixed records were created and deleted; signup created two transient users that DO remain in the DB (team_phase3run* and client_phase3run*, plus team_ui_* / client_ui_* from Playwright). If a clean DB is needed, drop them by email prefix.",
+    "(Doc) Update /app/memory/test_credentials.md to note that subsequent signups can pick role={team|client|manager} via POST /api/auth/signup. Current file only lists the leadership account."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/server.py L1158-1189 — Documents scope is enforced on LIST/CREATE but PATCH does not block changing 'scope'. The DocumentUpdate model omits scope (good), so it can't be flipped via API — verified by absence in model. OK.",
+    "/app/backend/server.py L1347-1356 — delete_post correctly limits to author OR leadership/manager. Good. But there is no PATCH /api/posts/{id} endpoint at all — posts are immutable after creation. If editing is desired, add an update endpoint with author-only access.",
+    "/app/backend/server.py L1419-1450 — Career journal correctly filters list by user_id, and update/delete check ownership. 'leadership' cannot override. Good privacy posture.",
+    "/app/backend/server.py L1305-1313 — Sales leads protected via require_roles('leadership','manager') — matches spec. Confirmed team and client both get 403.",
+    "/app/backend/server.py L1252-1277 — Marketing Materials has _team_only guard (clients 403); manager/team/leadership all allowed. Matches spec.",
+    "/app/frontend/src/contexts/AuthContext.jsx L53-69 — TABS and canSee correctly gate by role; team role excluded from Sales/Dashboard/Financials as expected. Verified in UI test.",
+    "/app/backend/server.py: file is now 1556 lines — approaching the 700-line guideline for splitting. Consider extracting marketing/sales/company sections into separate routers (e.g. routers/marketing.py).",
+    "/app/backend/server.py L1170, 1215, 1260, 1311, 1343, 1388, 1427 — All new create endpoints use `**data.dict()` which is deprecated in Pydantic v2 (model_dump preferred). Existing pattern is consistent across file; flag for future refactor."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase3_features.py (new — 22 pytest cases)",
+    "/app/test_reports/pytest/pytest_phase3_results.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (22/22 pytest in test_phase3_features.py)",
+    "frontend": "100% (11/11 Playwright scenarios covering all 14 review_request bullets)"
+  },
+  "test_credentials": "phase3_lead@studio.com / Pass1234! (leadership, pre-existing). Additionally created via /auth/signup for RBAC testing: team_phase3run<ts>@studio.com, client_phase3run<ts>@studio.com, team_ui_<ts>@studio.com, client_ui_<ts>@studio.com — all with password Pass1234!. These linger in DB after this run.",
+  "seed_data_creation": "All TEST_/UITEST_ prefixed records (documents, marketing tasks, materials, leads, posts, activities, journal entries) were created and deleted within the same test run. Only the 4 signup test users above remain.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 3 endpoints (documents/marketing tasks/materials/leads/posts/activities/journal) are GREEN. To re-run just Phase 3 tests: `cd /app && python -m pytest backend/tests/test_phase3_features.py -v -o addopts=''`. Note the legacy /app/backend/tests/backend_test.py references seed users (admin@studio.com, maya@studio.com, arjun@studio.com, client@acme.com) that no longer exist after the iteration_6 empty-DB reset — those tests WILL fail wholesale and should either be removed or updated to use signup. Phase 3 leadership account is the only pre-existing user. Sidebar tabs are: marketing (leadership/manager/team), sales (leadership/manager only), company (leadership/manager/team) — verified in UI.",
+  "rca of the issue": "No bugs found in Phase 3. The 3 minor backend observations (negative deal values, immutable posts, missing sort tiebreaker) are hardening suggestions, not blockers."
+}

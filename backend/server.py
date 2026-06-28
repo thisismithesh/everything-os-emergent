@@ -1137,6 +1137,319 @@ async def dashboard_gantt(user: dict = Depends(require_roles("leadership", "mana
 
 
 # ---------- CSV Export ----------
+# ---------- Marketing, Sales, Company ----------
+
+# Documents (used by Marketing Plan + Company Wiki). scope: "marketing" | "wiki"
+class DocumentIn(BaseModel):
+    title: str
+    body: Optional[str] = ""
+    tags: Optional[List[str]] = []
+    scope: Literal["marketing", "wiki"]
+
+class DocumentUpdate(BaseModel):
+    title: Optional[str] = None
+    body: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+def _team_only(user: dict):
+    if user["role"] == "client":
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+@api.get("/documents")
+async def list_documents(scope: str, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    if scope not in ("marketing", "wiki"):
+        raise HTTPException(status_code=400, detail="Bad scope")
+    docs = await db.documents.find({"scope": scope}, {"_id": 0}).sort("updated_at", -1).to_list(2000)
+    return docs
+
+@api.post("/documents")
+async def create_document(data: DocumentIn, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    now = now_utc().isoformat()
+    doc = {"id": new_id(), "title": data.title, "body": data.body or "", "tags": data.tags or [],
+           "scope": data.scope, "created_by": user["id"], "created_at": now, "updated_at": now}
+    await db.documents.insert_one(doc)
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+@api.patch("/documents/{doc_id}")
+async def update_document(doc_id: str, data: DocumentUpdate, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    patch = {k: v for k, v in data.dict().items() if v is not None}
+    patch["updated_at"] = now_utc().isoformat()
+    res = await db.documents.update_one({"id": doc_id}, {"$set": patch})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Not found")
+    return await db.documents.find_one({"id": doc_id}, {"_id": 0})
+
+@api.delete("/documents/{doc_id}")
+async def delete_document(doc_id: str, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    await db.documents.delete_one({"id": doc_id})
+    return {"ok": True}
+
+
+# Marketing Tracker tasks
+class MTaskIn(BaseModel):
+    title: str
+    description: Optional[str] = ""
+    status: Literal["backlog", "active", "completed"] = "backlog"
+    assignee_id: Optional[str] = None
+    due_date: Optional[str] = None
+
+class MTaskUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[Literal["backlog", "active", "completed"]] = None
+    assignee_id: Optional[str] = None
+    due_date: Optional[str] = None
+
+@api.get("/marketing/tasks")
+async def list_mtasks(user: dict = Depends(get_current_user)):
+    _team_only(user)
+    return await db.marketing_tasks.find({}, {"_id": 0}).sort("created_at", -1).to_list(2000)
+
+@api.post("/marketing/tasks")
+async def create_mtask(data: MTaskIn, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    doc = {"id": new_id(), **data.dict(), "created_by": user["id"], "created_at": now_utc().isoformat()}
+    await db.marketing_tasks.insert_one(doc)
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+@api.patch("/marketing/tasks/{tid}")
+async def update_mtask(tid: str, data: MTaskUpdate, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    patch = {k: v for k, v in data.dict().items() if v is not None}
+    res = await db.marketing_tasks.update_one({"id": tid}, {"$set": patch})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Not found")
+    return await db.marketing_tasks.find_one({"id": tid}, {"_id": 0})
+
+@api.delete("/marketing/tasks/{tid}")
+async def delete_mtask(tid: str, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    await db.marketing_tasks.delete_one({"id": tid})
+    return {"ok": True}
+
+
+# Marketing materials (published content database)
+class MaterialIn(BaseModel):
+    title: str
+    link: Optional[str] = ""
+    post_date: Optional[str] = None
+    posted: Optional[bool] = False
+    tags: Optional[List[str]] = []
+    notes: Optional[str] = ""
+
+class MaterialUpdate(BaseModel):
+    title: Optional[str] = None
+    link: Optional[str] = None
+    post_date: Optional[str] = None
+    posted: Optional[bool] = None
+    tags: Optional[List[str]] = None
+    notes: Optional[str] = None
+
+@api.get("/marketing/materials")
+async def list_materials(user: dict = Depends(get_current_user)):
+    _team_only(user)
+    return await db.marketing_materials.find({}, {"_id": 0}).sort("post_date", -1).to_list(2000)
+
+@api.post("/marketing/materials")
+async def create_material(data: MaterialIn, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    doc = {"id": new_id(), **data.dict(), "created_by": user["id"], "created_at": now_utc().isoformat()}
+    await db.marketing_materials.insert_one(doc)
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+@api.patch("/marketing/materials/{mid}")
+async def update_material(mid: str, data: MaterialUpdate, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    patch = {k: v for k, v in data.dict().items() if v is not None}
+    res = await db.marketing_materials.update_one({"id": mid}, {"$set": patch})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Not found")
+    return await db.marketing_materials.find_one({"id": mid}, {"_id": 0})
+
+@api.delete("/marketing/materials/{mid}")
+async def delete_material(mid: str, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    await db.marketing_materials.delete_one({"id": mid})
+    return {"ok": True}
+
+
+# Sales leads
+class LeadIn(BaseModel):
+    name: str
+    company: Optional[str] = ""
+    email: Optional[str] = ""
+    phone: Optional[str] = ""
+    source: Optional[str] = ""
+    status: Literal["new", "contacted", "qualified", "proposal", "won", "lost"] = "new"
+    value: Optional[float] = 0
+    owner_id: Optional[str] = None
+    notes: Optional[str] = ""
+    expected_close: Optional[str] = None
+
+class LeadUpdate(BaseModel):
+    name: Optional[str] = None
+    company: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    source: Optional[str] = None
+    status: Optional[Literal["new", "contacted", "qualified", "proposal", "won", "lost"]] = None
+    value: Optional[float] = None
+    owner_id: Optional[str] = None
+    notes: Optional[str] = None
+    expected_close: Optional[str] = None
+
+@api.get("/leads")
+async def list_leads(user: dict = Depends(require_roles("leadership", "manager"))):
+    return await db.leads.find({}, {"_id": 0}).sort("created_at", -1).to_list(2000)
+
+@api.post("/leads")
+async def create_lead(data: LeadIn, user: dict = Depends(require_roles("leadership", "manager"))):
+    doc = {"id": new_id(), **data.dict(), "created_by": user["id"], "created_at": now_utc().isoformat()}
+    await db.leads.insert_one(doc)
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+@api.patch("/leads/{lid}")
+async def update_lead(lid: str, data: LeadUpdate, user: dict = Depends(require_roles("leadership", "manager"))):
+    patch = {k: v for k, v in data.dict().items() if v is not None}
+    res = await db.leads.update_one({"id": lid}, {"$set": patch})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Not found")
+    return await db.leads.find_one({"id": lid}, {"_id": 0})
+
+@api.delete("/leads/{lid}")
+async def delete_lead(lid: str, user: dict = Depends(require_roles("leadership", "manager"))):
+    await db.leads.delete_one({"id": lid})
+    return {"ok": True}
+
+
+# Company Message Board posts
+class PostIn(BaseModel):
+    type: Literal["announcement", "appreciation", "boast"]
+    body: str
+    appreciate_user_id: Optional[str] = None   # only for type="appreciation"
+
+@api.get("/posts")
+async def list_posts(user: dict = Depends(get_current_user)):
+    _team_only(user)
+    return await db.posts.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+@api.post("/posts")
+async def create_post(data: PostIn, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    doc = {"id": new_id(), **data.dict(), "author_id": user["id"], "created_at": now_utc().isoformat()}
+    await db.posts.insert_one(doc)
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+@api.delete("/posts/{pid}")
+async def delete_post(pid: str, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    existing = await db.posts.find_one({"id": pid})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    if existing.get("author_id") != user["id"] and user["role"] not in ("leadership", "manager"):
+        raise HTTPException(403, "Forbidden")
+    await db.posts.delete_one({"id": pid})
+    return {"ok": True}
+
+
+# Company Activities (internal recurring/one-time activities)
+class ActivityIn(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    type: Literal["recurring", "one_time"] = "recurring"
+    cadence: Optional[Literal["weekly", "biweekly", "monthly", "quarterly", "yearly", "adhoc"]] = "weekly"
+    next_session: Optional[str] = None   # ISO date
+    organizer_id: Optional[str] = None
+    members: Optional[List[str]] = []
+    status: Optional[Literal["active", "paused", "ended"]] = "active"
+
+class ActivityUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    type: Optional[Literal["recurring", "one_time"]] = None
+    cadence: Optional[Literal["weekly", "biweekly", "monthly", "quarterly", "yearly", "adhoc"]] = None
+    next_session: Optional[str] = None
+    organizer_id: Optional[str] = None
+    members: Optional[List[str]] = None
+    status: Optional[Literal["active", "paused", "ended"]] = None
+
+@api.get("/activities")
+async def list_activities(user: dict = Depends(get_current_user)):
+    _team_only(user)
+    return await db.activities.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+@api.post("/activities")
+async def create_activity(data: ActivityIn, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    doc = {"id": new_id(), **data.dict(), "created_by": user["id"], "created_at": now_utc().isoformat()}
+    await db.activities.insert_one(doc)
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+@api.patch("/activities/{aid}")
+async def update_activity(aid: str, data: ActivityUpdate, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    patch = {k: v for k, v in data.dict().items() if v is not None}
+    res = await db.activities.update_one({"id": aid}, {"$set": patch})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Not found")
+    return await db.activities.find_one({"id": aid}, {"_id": 0})
+
+@api.delete("/activities/{aid}")
+async def delete_activity(aid: str, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    await db.activities.delete_one({"id": aid})
+    return {"ok": True}
+
+
+# Career Progress Journal (private per user)
+class JournalIn(BaseModel):
+    date: str                          # ISO date (YYYY-MM-DD)
+    body: str
+    mood: Optional[Literal["great", "good", "ok", "low"]] = None
+
+class JournalUpdate(BaseModel):
+    date: Optional[str] = None
+    body: Optional[str] = None
+    mood: Optional[Literal["great", "good", "ok", "low"]] = None
+
+@api.get("/journal")
+async def list_journal(user: dict = Depends(get_current_user)):
+    _team_only(user)
+    return await db.journal_entries.find({"user_id": user["id"]}, {"_id": 0}).sort("date", -1).to_list(2000)
+
+@api.post("/journal")
+async def create_journal(data: JournalIn, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    doc = {"id": new_id(), "user_id": user["id"], **data.dict(), "created_at": now_utc().isoformat()}
+    await db.journal_entries.insert_one(doc)
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+@api.patch("/journal/{jid}")
+async def update_journal(jid: str, data: JournalUpdate, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    existing = await db.journal_entries.find_one({"id": jid})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    if existing["user_id"] != user["id"]:
+        raise HTTPException(403, "Forbidden")
+    patch = {k: v for k, v in data.dict().items() if v is not None}
+    await db.journal_entries.update_one({"id": jid}, {"$set": patch})
+    return await db.journal_entries.find_one({"id": jid}, {"_id": 0})
+
+@api.delete("/journal/{jid}")
+async def delete_journal(jid: str, user: dict = Depends(get_current_user)):
+    _team_only(user)
+    existing = await db.journal_entries.find_one({"id": jid})
+    if not existing or existing["user_id"] != user["id"]:
+        raise HTTPException(403, "Forbidden")
+    await db.journal_entries.delete_one({"id": jid})
+    return {"ok": True}
+
+
 @api.get("/export/{resource}.csv")
 async def export_csv(resource: str, user: dict = Depends(get_current_user)):
     if resource not in ("projects", "tasks", "users", "clients", "events", "leaves"):
@@ -1213,6 +1526,18 @@ async def seed_db():
     await db.active_timers.create_index("user_id", unique=True)
     await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
     await db.notifications.create_index("id", unique=True)
+
+    # Phase 2 features
+    await db.documents.create_index("id", unique=True)
+    await db.documents.create_index([("scope", 1), ("updated_at", -1)])
+    await db.marketing_tasks.create_index("id", unique=True)
+    await db.marketing_materials.create_index("id", unique=True)
+    await db.leads.create_index("id", unique=True)
+    await db.posts.create_index("id", unique=True)
+    await db.posts.create_index([("created_at", -1)])
+    await db.activities.create_index("id", unique=True)
+    await db.journal_entries.create_index("id", unique=True)
+    await db.journal_entries.create_index([("user_id", 1), ("date", -1)])
 
     log.info("Indexes ensured. No seed users — first user is created via /auth/signup.")
 
