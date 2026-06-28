@@ -172,7 +172,7 @@ export default function ProjectDetail() {
                 ))}
               </div>
               <div className="flex items-center gap-2">
-                <a href={`${process.env.REACT_APP_BACKEND_URL}/api/export/tasks.csv`} className="text-sm flex items-center gap-2 px-3 py-2 border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-surface-hover)]"><Download className="w-4 h-4" /> Export</a>
+                <a href={`${import.meta.env.REACT_APP_BACKEND_URL}/api/export/tasks.csv`} className="text-sm flex items-center gap-2 px-3 py-2 border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-surface-hover)]"><Download className="w-4 h-4" /> Export</a>
                 {canEdit && <button onClick={()=>setShowAddTask(true)} className="text-sm flex items-center gap-2 px-3 py-2 bg-[var(--brand)] text-white rounded-md font-semibold hover:bg-[var(--brand-hover)]" data-testid="project-add-task-btn"><Plus className="w-4 h-4" /> Task</button>}
               </div>
             </div>

@@ -56,7 +56,7 @@ export default function Projects() {
           <button onClick={()=>setView("list")} className={`px-3 py-1.5 ${view==="list"?"bg-[var(--brand)] text-white":"text-[var(--text-secondary)]"}`} title="List" data-testid="projects-view-list"><List className="w-4 h-4" /></button>
           <button onClick={()=>setView("gantt")} className={`px-3 py-1.5 ${view==="gantt"?"bg-[var(--brand)] text-white":"text-[var(--text-secondary)]"}`} title="Gantt" data-testid="projects-view-gantt"><CalendarIcon className="w-4 h-4" /></button>
         </div>
-        <a href={`${process.env.REACT_APP_BACKEND_URL}/api/export/projects.csv`} className="px-3 py-2 rounded-md border border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)] text-sm flex items-center gap-2" data-testid="projects-export-btn">
+        <a href={`${import.meta.env.REACT_APP_BACKEND_URL}/api/export/projects.csv`} className="px-3 py-2 rounded-md border border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)] text-sm flex items-center gap-2" data-testid="projects-export-btn">
           <Download className="w-4 h-4" /> Export
         </a>
         {canCreate && (

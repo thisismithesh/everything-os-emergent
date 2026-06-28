@@ -69,7 +69,7 @@ export default function Tasks() {
           <button onClick={() => setView("list")} className={`px-3 py-1.5 text-xs font-semibold ${view==="list"?"bg-[var(--brand)] text-white":"text-[var(--text-secondary)]"}`} data-testid="tasks-view-list">List</button>
           <button onClick={() => setView("kanban")} className={`px-3 py-1.5 text-xs font-semibold ${view==="kanban"?"bg-[var(--brand)] text-white":"text-[var(--text-secondary)]"}`} data-testid="tasks-view-kanban">Kanban</button>
         </div>
-        <a href={`${process.env.REACT_APP_BACKEND_URL}/api/export/tasks.csv`} className="px-3 py-2 rounded-md border border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)] text-sm flex items-center gap-2" data-testid="tasks-export-btn">
+        <a href={`${import.meta.env.REACT_APP_BACKEND_URL}/api/export/tasks.csv`} className="px-3 py-2 rounded-md border border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)] text-sm flex items-center gap-2" data-testid="tasks-export-btn">
           <Download className="w-4 h-4" /> Export
         </a>
         <button onClick={() => setShowAdd(true)} className="bg-[var(--brand)] hover:bg-[var(--brand-hover)] text-white text-sm font-semibold rounded-md px-3 py-2 flex items-center gap-2" data-testid="tasks-add-btn">

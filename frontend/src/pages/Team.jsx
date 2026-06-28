@@ -49,7 +49,7 @@ export default function Team() {
   return (
     <>
       <PageHeader eyebrow="Team" title="Team database" description="Click a row to see details, leaves and projects.">
-        <a href={`${process.env.REACT_APP_BACKEND_URL}/api/export/users.csv`} className="px-3 py-2 rounded-md border border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)] text-sm flex items-center gap-2" data-testid="team-export-btn">
+        <a href={`${import.meta.env.REACT_APP_BACKEND_URL}/api/export/users.csv`} className="px-3 py-2 rounded-md border border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)] text-sm flex items-center gap-2" data-testid="team-export-btn">
           <Download className="w-4 h-4" /> Export
         </a>
         {canManage && (
