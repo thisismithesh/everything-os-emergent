@@ -156,6 +156,7 @@ function MemberDrawer({ member, projects, leaves, stats, canManage, onClose, onE
             <Row k="Status" v={u.in_office ? "In office" : "Remote"} />
             <Row k="Joined" v={u.joining_date} />
             <Row k="Birthday" v={u.birthday} />
+            <Row k="Hourly rate" v={u.hourly_rate ? `₹${u.hourly_rate.toLocaleString("en-IN")}/h` : null} />
           </Section>
 
           <Section title={`Projects (${projects.length})`}>
@@ -221,6 +222,7 @@ function MemberFormModal({ member, onClose, onSaved }) {
     joining_date: member?.joining_date || "",
     birthday: member?.birthday || "",
     avatar: member?.avatar || "",
+    hourly_rate: member?.hourly_rate ?? "",
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -228,11 +230,12 @@ function MemberFormModal({ member, onClose, onSaved }) {
   const submit = async (e) => {
     e.preventDefault(); setBusy(true); setErr("");
     try {
+      const payload = { ...form, hourly_rate: form.hourly_rate === "" ? null : Number(form.hourly_rate) };
       if (isEdit) {
-        const { password, email, ...rest } = form;
+        const { password, email, ...rest } = payload;
         await api.patch(`/users/${member.id}`, rest);
       } else {
-        await api.post("/auth/register", form);
+        await api.post("/auth/register", payload);
       }
       onSaved && onSaved(); onClose();
     } catch (e2) { setErr(e2.response?.data?.detail || "Failed"); } finally { setBusy(false); }
@@ -259,6 +262,10 @@ function MemberFormModal({ member, onClose, onSaved }) {
             <input value={form.team} onChange={(e)=>upd("team",e.target.value)} placeholder="Team" className="border border-[var(--border-default)] rounded-md px-3 py-2" />
           </div>
           <input value={form.title} onChange={(e)=>upd("title",e.target.value)} placeholder="Title" className="w-full border border-[var(--border-default)] rounded-md px-3 py-2" data-testid="member-title-input" />
+          <label className="block">
+            <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold mb-1">Hourly rate (₹/h)</div>
+            <input type="number" min="0" step="50" value={form.hourly_rate} onChange={(e)=>upd("hourly_rate",e.target.value)} placeholder="e.g. 2500" className="w-full border border-[var(--border-default)] rounded-md px-3 py-2" data-testid="member-rate-input" />
+          </label>
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
               <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold mb-1">Joined</div>

@@ -195,6 +195,7 @@ function AddProjectModal({ clients, users, onClose, onSaved, project }) {
   const [scope, setScope] = useState(project?.scope || "");
   const [leadSource, setLeadSource] = useState(project?.lead_source || "");
   const [hoursAllocated, setHoursAllocated] = useState(project?.hours_allocated || "");
+  const [budget, setBudget] = useState(project?.budget ?? "");
   const [deliverables, setDeliverables] = useState((project?.service_deliverables || []).join(", "));
   const [members, setMembers] = useState(project?.members || []);
   const [busy, setBusy] = useState(false);
@@ -215,6 +216,7 @@ function AddProjectModal({ clients, users, onClose, onSaved, project }) {
       brief: brief || null, scope: scope || null,
       lead_source: leadSource || null,
       hours_allocated: hoursAllocated ? Number(hoursAllocated) : null,
+      budget: budget === "" ? null : Number(budget),
       service_deliverables: deliverables ? deliverables.split(",").map((s)=>s.trim()).filter(Boolean) : [],
       members,
     };
@@ -266,6 +268,12 @@ function AddProjectModal({ clients, users, onClose, onSaved, project }) {
           <input value={leadSource} onChange={(e)=>setLeadSource(e.target.value)} placeholder="Lead source" className="w-full border border-[var(--border-default)] rounded-md px-3 py-2" />
           {type === "billable_retainer" && (
             <input type="number" min="0" value={hoursAllocated} onChange={(e)=>setHoursAllocated(e.target.value)} placeholder="Hours allocated (per month)" className="w-full border border-[var(--border-default)] rounded-md px-3 py-2" />
+          )}
+          {type !== "non_billable" && (
+            <label className="block">
+              <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-semibold mb-1">Project budget (₹)</div>
+              <input type="number" min="0" step="1000" value={budget} onChange={(e)=>setBudget(e.target.value)} placeholder="e.g. 500000" className="w-full border border-[var(--border-default)] rounded-md px-3 py-2" data-testid="project-budget-input" />
+            </label>
           )}
           <input value={deliverables} onChange={(e)=>setDeliverables(e.target.value)} placeholder="Deliverables (comma separated)" className="w-full border border-[var(--border-default)] rounded-md px-3 py-2" data-testid="project-deliverables-input" />
           <textarea value={brief} onChange={(e)=>setBrief(e.target.value)} placeholder="Project brief\u2026" className="w-full border border-[var(--border-default)] rounded-md px-3 py-2 min-h-[64px]" />

@@ -21,4 +21,3 @@ export function PlaceholderPage({ eyebrow, title, description }) {
 export function Marketing()  { return <PlaceholderPage eyebrow="Marketing"  title="Marketing"  description="Campaigns, leads, brand activity." />; }
 export function Sales()      { return <PlaceholderPage eyebrow="Sales"      title="Sales"      description="Pipeline, proposals, conversions." />; }
 export function Company()    { return <PlaceholderPage eyebrow="Company"    title="Company"    description="Policies, handbook, internal updates." />; }
-export function Financials() { return <PlaceholderPage eyebrow="Financials" title="Financials" description="Revenue, costs, profitability." />; }

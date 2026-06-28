@@ -154,6 +154,7 @@ class RegisterIn(BaseModel):
     birthday: Optional[str] = None
     client_id: Optional[str] = None
     avatar: Optional[str] = None
+    hourly_rate: Optional[float] = None
 
 class LoginIn(BaseModel):
     email: EmailStr
@@ -197,6 +198,7 @@ class ProjectIn(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     hours_allocated: Optional[float] = None
+    budget: Optional[float] = None
     service_deliverables: Optional[List[str]] = []
     teams_involved: Optional[List[str]] = []
     members: Optional[List[ProjectMember]] = []
@@ -260,6 +262,7 @@ class UserUpdate(BaseModel):
     avatar: Optional[str] = None
     role: Optional[Role] = None
     client_id: Optional[str] = None
+    hourly_rate: Optional[float] = None
 
 # ---------- Auth endpoints ----------
 @api.post("/auth/register")
@@ -283,6 +286,7 @@ async def register(data: RegisterIn, response: Response, current=Depends(get_cur
         "birthday": data.birthday,
         "client_id": data.client_id,
         "avatar": data.avatar,
+        "hourly_rate": data.hourly_rate,
         "created_at": now_utc().isoformat(),
     }
     await db.users.insert_one(doc)
@@ -961,6 +965,149 @@ async def mark_all_read(user: dict = Depends(get_current_user)):
     await db.notifications.update_many(
         {"user_id": user["id"], "read": False}, {"$set": {"read": True}})
     return {"ok": True}
+
+
+# ---------- Financials ----------
+@api.get("/financials/overview")
+async def financials_overview(user: dict = Depends(require_roles("leadership", "manager"))):
+    """Computes earned revenue, billable/internal hours, project P&L and team utilization.
+
+    Earned revenue = hours × user.hourly_rate, capped per-project at project.budget.
+    All amounts in INR.
+    """
+    projects = await db.projects.find({}, {"_id": 0}).to_list(2000)
+    tasks = await db.tasks.find({}, {"_id": 0, "id": 1, "project_id": 1}).to_list(5000)
+    users = await db.users.find({"role": {"$ne": "client"}}, {"_id": 0}).to_list(1000)
+    entries = await db.time_entries.find({}, {"_id": 0}).to_list(20000)
+
+    task_to_project = {t["id"]: t.get("project_id") for t in tasks}
+    user_rate = {u["id"]: float(u.get("hourly_rate") or 0) for u in users}
+
+    # Month boundaries
+    now = now_utc()
+    month_start_iso = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+    # Aggregate per project
+    project_stats = {p["id"]: {
+        "id": p["id"], "name": p["name"], "type": p["type"], "status": p.get("status"),
+        "budget": float(p.get("budget") or 0),
+        "billable": p["type"] in ("billable_regular", "billable_retainer"),
+        "hours_total": 0.0,
+        "hours_mtd": 0.0,
+        "cost_total": 0.0,
+        "cost_mtd": 0.0,
+    } for p in projects}
+
+    # Per-user MTD aggregates
+    user_mtd = {u["id"]: {"hours_billable": 0.0, "hours_internal": 0.0, "revenue": 0.0} for u in users}
+
+    for e in entries:
+        mins = e.get("duration_minutes") or 0
+        if mins <= 0:
+            continue
+        hrs = mins / 60.0
+        pid = task_to_project.get(e.get("task_id"))
+        rate = user_rate.get(e.get("user_id"), 0)
+        cost = hrs * rate
+        is_mtd = (e.get("start_time") or "") >= month_start_iso
+
+        if pid and pid in project_stats:
+            ps = project_stats[pid]
+            ps["hours_total"] += hrs
+            ps["cost_total"] += cost
+            if is_mtd:
+                ps["hours_mtd"] += hrs
+                ps["cost_mtd"] += cost
+                if e.get("user_id") in user_mtd:
+                    if ps["billable"]:
+                        user_mtd[e["user_id"]]["hours_billable"] += hrs
+                    else:
+                        user_mtd[e["user_id"]]["hours_internal"] += hrs
+
+    # Earned revenue per project (cap at budget for billable; non-billable = 0)
+    rows = []
+    earned_mtd_total = 0.0
+    billable_hours_mtd = 0.0
+    internal_hours_mtd = 0.0
+    outstanding_value = 0.0
+
+    for p in projects:
+        ps = project_stats[p["id"]]
+        budget = ps["budget"]
+        if ps["billable"]:
+            earned_total = min(ps["cost_total"], budget) if budget > 0 else ps["cost_total"]
+            earned_mtd = min(ps["cost_mtd"], max(0, budget - (ps["cost_total"] - ps["cost_mtd"]))) if budget > 0 else ps["cost_mtd"]
+            earned_mtd = max(0.0, earned_mtd)
+            remaining = max(0.0, budget - earned_total) if budget > 0 else 0.0
+            if ps["status"] not in ("complete", "cancelled"):
+                outstanding_value += remaining
+        else:
+            earned_total = 0.0
+            earned_mtd = 0.0
+            remaining = 0.0
+
+        earned_mtd_total += earned_mtd
+        billable_hours_mtd += ps["hours_mtd"] if ps["billable"] else 0
+        internal_hours_mtd += ps["hours_mtd"] if not ps["billable"] else 0
+
+        rows.append({
+            "id": p["id"],
+            "name": p["name"],
+            "type": p["type"],
+            "status": p.get("status"),
+            "billable": ps["billable"],
+            "budget": budget,
+            "hours_total": round(ps["hours_total"], 2),
+            "earned_total": round(earned_total, 2),
+            "remaining": round(remaining, 2),
+            "percent_used": round((earned_total / budget * 100), 1) if budget > 0 else None,
+        })
+
+    # Per-user revenue (cap proportional to project budgets is hard; simple sum is good enough)
+    for e in entries:
+        if (e.get("start_time") or "") < month_start_iso:
+            continue
+        uid = e.get("user_id")
+        if uid not in user_mtd:
+            continue
+        pid = task_to_project.get(e.get("task_id"))
+        ps = project_stats.get(pid) if pid else None
+        if not ps or not ps["billable"]:
+            continue
+        hrs = (e.get("duration_minutes") or 0) / 60.0
+        user_mtd[uid]["revenue"] += hrs * user_rate.get(uid, 0)
+
+    # Team utilization rows
+    team_rows = []
+    for u in users:
+        m = user_mtd.get(u["id"], {})
+        billable = round(m.get("hours_billable", 0), 2)
+        internal = round(m.get("hours_internal", 0), 2)
+        total = billable + internal
+        team_rows.append({
+            "id": u["id"],
+            "name": u.get("name") or "—",
+            "role": u.get("role"),
+            "team": u.get("team"),
+            "hourly_rate": float(u.get("hourly_rate") or 0),
+            "hours_billable_mtd": billable,
+            "hours_internal_mtd": internal,
+            "hours_total_mtd": round(total, 2),
+            "revenue_mtd": round(m.get("revenue", 0), 2),
+            "utilization": round((billable / total * 100), 1) if total > 0 else None,
+        })
+
+    return {
+        "currency": "INR",
+        "kpis": {
+            "earned_revenue_mtd": round(earned_mtd_total, 2),
+            "billable_hours_mtd": round(billable_hours_mtd, 2),
+            "internal_hours_mtd": round(internal_hours_mtd, 2),
+            "outstanding_value": round(outstanding_value, 2),
+        },
+        "projects": sorted(rows, key=lambda r: r["earned_total"], reverse=True),
+        "team": sorted(team_rows, key=lambda r: r["revenue_mtd"], reverse=True),
+    }
 
 
 # ---------- Dashboard (project + team gantt) ----------
