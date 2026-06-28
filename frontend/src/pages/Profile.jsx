@@ -148,7 +148,7 @@ function AppIconUpload() {
     try {
       const reader = new FileReader();
       reader.onload = (event) => {
-        const base64 = event.target?.result as string;
+        const base64 = event.target?.result;
         localStorage.setItem("app_heading_icon", base64);
         setAppIcon(base64);
         setMsg("Icon updated! Reload page to see changes.");
