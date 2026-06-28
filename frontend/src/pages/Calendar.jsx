@@ -88,7 +88,7 @@ export default function CalendarPage() {
         <button onClick={() => setCursor(addMonths(cursor, -1))} data-testid="calendar-prev-month" className="p-2 rounded-md border border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)]" aria-label="Previous month"><ChevronLeft className="w-4 h-4" /></button>
         <button onClick={() => setCursor(startOfMonth(new Date()))} data-testid="calendar-today-btn" className="px-3 py-2 rounded-md border border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)] text-sm">Today</button>
         <button onClick={() => setCursor(addMonths(cursor, 1))} data-testid="calendar-next-month" className="p-2 rounded-md border border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)]" aria-label="Next month"><ChevronRight className="w-4 h-4" /></button>
-        <a href={`${import.meta.env.REACT_APP_BACKEND_URL}/api/export/events.csv`} data-testid="calendar-export-btn" className="ml-2 px-3 py-2 rounded-md border border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)] text-sm flex items-center gap-2"><Download className="w-4 h-4" /> Export</a>
+        <a href={`${import.meta.env.VITE_BACKEND_URL}/api/export/events.csv`} data-testid="calendar-export-btn" className="ml-2 px-3 py-2 rounded-md border border-[var(--border-default)] hover:bg-[var(--bg-surface-hover)] text-sm flex items-center gap-2"><Download className="w-4 h-4" /> Export</a>
         {canEdit && (
           <button onClick={() => setShowAdd(true)} data-testid="calendar-add-event-btn" className="ml-2 bg-[var(--brand)] hover:bg-[var(--brand-hover)] text-white text-sm font-semibold rounded-md px-3 py-2 flex items-center gap-2"><Plus className="w-4 h-4" /> Event</button>
         )}
