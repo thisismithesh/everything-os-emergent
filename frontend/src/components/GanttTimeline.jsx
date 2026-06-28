@@ -17,7 +17,11 @@ export default function GanttTimeline({ rows, onPatch, editable = true, padDays 
   const todayRef = useRef(null);
 
   const dates = useMemo(() => {
-    const all = rows.flatMap((r) => [r.start, r.end].filter(Boolean));
+    const all = rows.flatMap((r) => [
+      r.start, r.end,
+      ...(r.segments || []).flatMap((s) => [s.start, s.end]),
+      ...(r.secondary || []).flatMap((s) => [s.start, s.end]),
+    ].filter(Boolean));
     let min, max;
     if (all.length === 0) {
       const t = new Date(); t.setHours(0,0,0,0);
@@ -155,8 +159,9 @@ export default function GanttTimeline({ rows, onPatch, editable = true, padDays 
 }
 
 function Row({ row, start, colW, labelWidth, totalCols, rowHeight, idxOf, dateAt, todayIdx, todayAccent, editable, onPatch }) {
-  const initLeft = row.start ? idxOf(row.start) : 0;
-  const initEnd = row.end ? idxOf(row.end) : initLeft + 3;
+  const hasMainBar = !!(row.start && row.end);
+  const initLeft = hasMainBar ? idxOf(row.start) : 0;
+  const initEnd = hasMainBar ? idxOf(row.end) : initLeft + 3;
   const initWidth = Math.max(1, initEnd - initLeft + 1);
 
   const [lp, setLp] = useState(initLeft);
@@ -254,7 +259,26 @@ function Row({ row, start, colW, labelWidth, totalCols, rowHeight, idxOf, dateAt
             />
           );
         })}
+        {/* segments (multiple bars per row, e.g., team timeline) */}
+        {(row.segments || []).map((s, i) => {
+          const a = idxOf(s.start), b = idxOf(s.end);
+          const left = Math.max(0, Math.min(totalCols-1, a));
+          const w = Math.max(1, b - a + 1);
+          return (
+            <div key={`seg-${i}`}
+              title={s.title || ""}
+              onClick={(e)=>{ e.stopPropagation(); s.onClick && s.onClick(); }}
+              className="absolute rounded-sm flex items-center px-1.5 overflow-hidden cursor-pointer hover:opacity-90"
+              style={{ left: left*colW + 2, width: w*colW - 4, height: rowHeight - 20, top: 8, background: s.color || "#2563EB" }}
+            >
+              {w * colW > 60 && (
+                <span className="text-white text-[11px] font-medium truncate">{s.title}</span>
+              )}
+            </div>
+          );
+        })}
         {/* main bar */}
+        {hasMainBar && (
         <div
           className="absolute rounded-sm flex items-center select-none"
           style={{ left: lp * colW + 2, width: wd * colW - 4, top: 8, height: rowHeight - 20, background: color, cursor: editable ? "grab" : "pointer" }}
@@ -281,6 +305,7 @@ function Row({ row, start, colW, labelWidth, totalCols, rowHeight, idxOf, dateAt
             <span className="text-white text-[11px] font-medium px-2 truncate w-full">{row.barLabel || row.label}</span>
           )}
         </div>
+        )}
       </div>
     </div>
   );

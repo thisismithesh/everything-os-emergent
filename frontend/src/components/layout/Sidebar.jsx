@@ -40,10 +40,10 @@ export default function Sidebar() {
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-8 h-8 bg-[var(--brand)] rounded-sm flex items-center justify-center">
-              <span className="text-white text-sm font-black tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>S</span>
+              <span className="text-white text-sm font-black tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>E</span>
             </div>
             <div className="min-w-0">
-              <div className="text-sm font-bold tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>Studio PM</div>
+              <div className="text-sm font-bold tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>Everything OS</div>
               <div className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)]">Design Agency</div>
             </div>
           </div>

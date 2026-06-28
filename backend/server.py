@@ -41,7 +41,7 @@ mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
 
-app = FastAPI(title="Studio PM")
+app = FastAPI(title="Everything OS")
 api = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -167,6 +167,7 @@ class SignupIn(BaseModel):
     email: EmailStr
     password: str
     name: str
+    role: Optional[Literal["leadership", "manager", "team", "client"]] = None
 
 class TeamIn(BaseModel):
     name: str
@@ -314,7 +315,10 @@ async def signup(data: SignupIn, response: Response):
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
     count = await db.users.count_documents({})
-    role = "leadership" if count == 0 else "team"
+    if count == 0:
+        role = "leadership"
+    else:
+        role = data.role or "team"
     doc = {
         "id": new_id(),
         "email": email,
@@ -589,8 +593,12 @@ async def list_tasks(
     if status:
         q["status"] = status
     if user["role"] == "client":
-        # clients see no tasks (not allowed)
-        raise HTTPException(status_code=403, detail="Forbidden")
+        # Clients can only see tasks of projects belonging to their client account.
+        if not project_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        proj = await db.projects.find_one({"id": project_id}, {"client_id": 1})
+        if not proj or proj.get("client_id") != user.get("client_id"):
+            raise HTTPException(status_code=403, detail="Forbidden")
     tasks = await db.tasks.find(q, {"_id": 0}).to_list(2000)
     return tasks
 
@@ -1021,7 +1029,7 @@ async def export_csv(resource: str, user: dict = Depends(get_current_user)):
 # ---------- Health ----------
 @api.get("/")
 async def root():
-    return {"name": "Studio PM", "status": "ok"}
+    return {"name": "Everything OS", "status": "ok"}
 
 
 # ---------- App wiring ----------

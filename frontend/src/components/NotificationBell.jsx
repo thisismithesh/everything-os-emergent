@@ -73,7 +73,7 @@ export default function NotificationBell() {
 
       {open && (
         <div
-          className="absolute left-full top-0 ml-2 w-80 bg-white border border-[var(--border-default)] rounded-md shadow-lg z-50 overflow-hidden"
+          className="fixed left-[260px] top-[64px] w-80 bg-white border border-[var(--border-default)] rounded-md shadow-lg z-[100] overflow-hidden"
           data-testid="notif-dropdown"
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-default)]">

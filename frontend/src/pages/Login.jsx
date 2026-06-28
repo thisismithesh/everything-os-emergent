@@ -12,6 +12,7 @@ export default function Login() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState("team");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -41,7 +42,7 @@ export default function Login() {
   const submitSignup = async (e) => {
     e.preventDefault(); setErr(""); setBusy(true);
     try {
-      const { data } = await api.post("/auth/signup", { name, email, password });
+      const { data } = await api.post("/auth/signup", { name, email, password, role: firstUser ? undefined : role });
       if (data?.access_token) setAccessToken(data.access_token);
       setUser(data); setReady(true);
       goNext(data.role);
@@ -53,9 +54,9 @@ export default function Login() {
       <div className="hidden lg:flex flex-col justify-between p-12 bg-[var(--brand)] text-white">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-white rounded-sm flex items-center justify-center">
-            <span className="text-[var(--brand)] text-sm font-black tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>S</span>
+            <span className="text-[var(--brand)] text-sm font-black tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>E</span>
           </div>
-          <div className="text-sm font-bold tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>Studio PM</div>
+          <div className="text-sm font-bold tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>Everything OS</div>
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-[0.18em] text-white/60 font-semibold mb-3">A project management OS</div>
@@ -66,7 +67,7 @@ export default function Login() {
             A single source of truth for projects, tasks, calendar, clients and team — built for design agencies.
           </p>
         </div>
-        <div className="text-xs text-white/40">© Studio PM</div>
+        <div className="text-xs text-white/40">© Everything OS</div>
       </div>
 
       <div className="flex items-center justify-center p-6 lg:p-12">
@@ -123,6 +124,17 @@ export default function Login() {
                     className="mt-1 w-full bg-white border border-[var(--border-default)] rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)] focus:border-[var(--brand)]"
                     placeholder="At least 8 characters" />
                 </Field>
+                {!firstUser && (
+                  <Field label="I am a">
+                    <select value={role} onChange={(e)=>setRole(e.target.value)} data-testid="signup-role-select"
+                      className="mt-1 w-full bg-white border border-[var(--border-default)] rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)] focus:border-[var(--brand)]">
+                      <option value="team">Team member</option>
+                      <option value="manager">Manager</option>
+                      <option value="leadership">Leadership</option>
+                      <option value="client">Client</option>
+                    </select>
+                  </Field>
+                )}
                 {err && <Error msg={err} />}
                 <button type="submit" disabled={busy} data-testid="signup-submit-btn"
                   className="w-full bg-[var(--brand)] hover:bg-[var(--brand-hover)] text-white text-sm font-semibold rounded-md py-2.5 transition-colors disabled:opacity-50">
