@@ -297,36 +297,37 @@ async def login(data: LoginIn, response: Response):
     access = create_access_token(u["id"], u["email"])
     refresh = create_refresh_token(u["id"])
     set_auth_cookies(response, access, refresh)
-    return public_user(u)
+    return {**public_user(u), "access_token": access}
 
 
 @api.get("/auth/signup-allowed")
 async def signup_allowed():
-    """Returns whether self-signup is currently allowed (only when no users exist)."""
+    """Self sign-up is always allowed. Returns whether the DB is empty (first user becomes leadership)."""
     count = await db.users.count_documents({})
-    return {"allowed": count == 0}
+    return {"allowed": True, "first_user": count == 0}
 
 
 @api.post("/auth/signup")
 async def signup(data: SignupIn, response: Response):
-    """Public first-user sign-up. Becomes leadership. Disabled once any user exists."""
-    count = await db.users.count_documents({})
-    if count > 0:
-        raise HTTPException(status_code=403, detail="Sign-up is disabled. Ask an admin to invite you.")
+    """Public self sign-up. First user becomes leadership, all subsequent users default to team."""
     email = data.email.lower()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    count = await db.users.count_documents({})
+    role = "leadership" if count == 0 else "team"
     doc = {
         "id": new_id(),
         "email": email,
         "password_hash": hash_password(data.password),
         "name": data.name,
-        "role": "leadership",
+        "role": role,
         "created_at": now_utc().isoformat(),
     }
     await db.users.insert_one(doc)
     access = create_access_token(doc["id"], doc["email"])
     refresh = create_refresh_token(doc["id"])
     set_auth_cookies(response, access, refresh)
-    return public_user(doc)
+    return {**public_user(doc), "access_token": access}
 
 
 @api.post("/auth/logout")
@@ -360,7 +361,7 @@ async def refresh(request: Request, response: Response):
     access = create_access_token(u["id"], u["email"])
     response.set_cookie("access_token", access, httponly=True, secure=True,
                         samesite="none", max_age=int(ACCESS_TTL.total_seconds()), path="/")
-    return {"ok": True}
+    return {"ok": True, "access_token": access}
 
 
 @api.post("/auth/emergent-session")

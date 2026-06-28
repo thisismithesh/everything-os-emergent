@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import api, { formatError } from "@/lib/api";
+import api, { formatError, setAccessToken, clearAccessToken } from "@/lib/api";
 
 const AuthContext = createContext(null);
 
@@ -29,6 +29,7 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
+    if (data?.access_token) setAccessToken(data.access_token);
     setUser(data);
     setReady(true);
     return data;
@@ -36,6 +37,7 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try { await api.post("/auth/logout"); } catch { /* ignore */ }
+    clearAccessToken();
     setUser(false);
   };
 

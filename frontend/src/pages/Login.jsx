@@ -1,28 +1,28 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import api, { formatError } from "@/lib/api";
+import api, { formatError, setAccessToken } from "@/lib/api";
 
 export default function Login() {
   const { login, setUser, setReady } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
   const [mode, setMode] = useState("signin");      // "signin" | "signup"
-  const [signupAllowed, setSignupAllowed] = useState(false);
+  const [firstUser, setFirstUser] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Check if self sign-up is currently allowed (i.e. zero users in DB).
+  // If the DB is empty, default to signup. Otherwise default to signin.
   useEffect(() => {
     api.get("/auth/signup-allowed")
       .then((r) => {
-        setSignupAllowed(!!r.data?.allowed);
-        if (r.data?.allowed) setMode("signup");
+        setFirstUser(!!r.data?.first_user);
+        if (r.data?.first_user) setMode("signup");
       })
-      .catch(() => setSignupAllowed(false));
+      .catch(() => {});
   }, []);
 
   const goNext = (role) => {
@@ -42,6 +42,7 @@ export default function Login() {
     e.preventDefault(); setErr(""); setBusy(true);
     try {
       const { data } = await api.post("/auth/signup", { name, email, password });
+      if (data?.access_token) setAccessToken(data.access_token);
       setUser(data); setReady(true);
       goNext(data.role);
     } catch (e2) { setErr(formatError(e2)); } finally { setBusy(false); }
@@ -91,39 +92,39 @@ export default function Login() {
                   {busy ? "Signing in…" : "Sign in"}
                 </button>
               </form>
-              {signupAllowed && (
-                <p className="mt-6 text-xs text-center text-[var(--text-secondary)]">
-                  No accounts yet?{" "}
-                  <button type="button" onClick={()=>{setMode("signup"); setErr("");}} data-testid="switch-to-signup" className="font-semibold text-[var(--text-primary)] hover:underline">
-                    Create the first account
-                  </button>
-                </p>
-              )}
+              <p className="mt-6 text-xs text-center text-[var(--text-secondary)]">
+                Don&apos;t have an account?{" "}
+                <button type="button" onClick={()=>{setMode("signup"); setErr("");}} data-testid="switch-to-signup" className="font-semibold text-[var(--text-primary)] hover:underline">
+                  Sign up
+                </button>
+              </p>
             </>
           ) : (
             <>
               <h2 className="text-3xl font-black tracking-tight" style={{ fontFamily: "'Cabinet Grotesk'" }}>Create your account</h2>
               <p className="text-sm text-[var(--text-secondary)] mt-1">
-                {signupAllowed ? "You'll be the studio's first user (leadership)." : "Sign-up is currently disabled."}
+                {firstUser
+                  ? "You'll be the studio's first user (leadership)."
+                  : "Sign up to join your studio."}
               </p>
               <form onSubmit={submitSignup} className="mt-8 space-y-4" data-testid="signup-form">
                 <Field label="Full name">
                   <input type="text" required value={name} onChange={(e)=>setName(e.target.value)} data-testid="signup-name-input"
                     className="mt-1 w-full bg-white border border-[var(--border-default)] rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)] focus:border-[var(--brand)]"
-                    placeholder="Aanya Iyer" disabled={!signupAllowed} />
+                    placeholder="Aanya Iyer" />
                 </Field>
                 <Field label="Email">
                   <input type="email" required value={email} onChange={(e)=>setEmail(e.target.value)} data-testid="signup-email-input"
                     className="mt-1 w-full bg-white border border-[var(--border-default)] rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)] focus:border-[var(--brand)]"
-                    placeholder="you@studio.com" disabled={!signupAllowed} />
+                    placeholder="you@studio.com" />
                 </Field>
                 <Field label="Password">
                   <input type="password" required value={password} onChange={(e)=>setPassword(e.target.value)} data-testid="signup-password-input"
                     className="mt-1 w-full bg-white border border-[var(--border-default)] rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)] focus:border-[var(--brand)]"
-                    placeholder="At least 8 characters" disabled={!signupAllowed} />
+                    placeholder="At least 8 characters" />
                 </Field>
                 {err && <Error msg={err} />}
-                <button type="submit" disabled={busy || !signupAllowed} data-testid="signup-submit-btn"
+                <button type="submit" disabled={busy} data-testid="signup-submit-btn"
                   className="w-full bg-[var(--brand)] hover:bg-[var(--brand-hover)] text-white text-sm font-semibold rounded-md py-2.5 transition-colors disabled:opacity-50">
                   {busy ? "Creating…" : "Create account"}
                 </button>
