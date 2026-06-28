@@ -162,6 +162,12 @@ class LoginIn(BaseModel):
 class EmergentSessionIn(BaseModel):
     session_id: str
 
+
+class SignupIn(BaseModel):
+    email: EmailStr
+    password: str
+    name: str
+
 class TeamIn(BaseModel):
     name: str
     color: Optional[str] = "#0A0A0A"
@@ -292,6 +298,35 @@ async def login(data: LoginIn, response: Response):
     refresh = create_refresh_token(u["id"])
     set_auth_cookies(response, access, refresh)
     return public_user(u)
+
+
+@api.get("/auth/signup-allowed")
+async def signup_allowed():
+    """Returns whether self-signup is currently allowed (only when no users exist)."""
+    count = await db.users.count_documents({})
+    return {"allowed": count == 0}
+
+
+@api.post("/auth/signup")
+async def signup(data: SignupIn, response: Response):
+    """Public first-user sign-up. Becomes leadership. Disabled once any user exists."""
+    count = await db.users.count_documents({})
+    if count > 0:
+        raise HTTPException(status_code=403, detail="Sign-up is disabled. Ask an admin to invite you.")
+    email = data.email.lower()
+    doc = {
+        "id": new_id(),
+        "email": email,
+        "password_hash": hash_password(data.password),
+        "name": data.name,
+        "role": "leadership",
+        "created_at": now_utc().isoformat(),
+    }
+    await db.users.insert_one(doc)
+    access = create_access_token(doc["id"], doc["email"])
+    refresh = create_refresh_token(doc["id"])
+    set_auth_cookies(response, access, refresh)
+    return public_user(doc)
 
 
 @api.post("/auth/logout")
@@ -1001,19 +1036,7 @@ app.add_middleware(
 )
 
 
-# ---------- Seed (login accounts only) ----------
-SEED_USERS = [
-    {"email": "admin@studio.com", "password": "admin123", "name": "Admin",
-     "role": "leadership", "title": "Founder", "in_office": True},
-    {"email": "maya@studio.com", "password": "password123", "name": "Maya Sharma",
-     "role": "manager", "title": "Design Director", "in_office": True},
-    {"email": "arjun@studio.com", "password": "password123", "name": "Arjun Patel",
-     "role": "team", "title": "Senior Designer", "in_office": True},
-    {"email": "client@acme.com", "password": "password123", "name": "Client Demo",
-     "role": "client", "title": "Client"},
-]
-
-
+# ---------- Seed (indexes only, no users) ----------
 async def seed_db():
     # Indexes (idempotent)
     await db.users.create_index("email", unique=True)
@@ -1035,24 +1058,7 @@ async def seed_db():
     await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
     await db.notifications.create_index("id", unique=True)
 
-    # Seed only the 4 login accounts. Idempotent: each is only created if missing.
-    for u in SEED_USERS:
-        existing = await db.users.find_one({"email": u["email"]})
-        if existing:
-            # Keep admin password in sync with .env if it changed.
-            if u["email"] == "admin@studio.com":
-                env_pw = os.environ.get("ADMIN_PASSWORD", u["password"])
-                if not verify_password(env_pw, existing.get("password_hash", "")):
-                    await db.users.update_one({"id": existing["id"]},
-                                              {"$set": {"password_hash": hash_password(env_pw)}})
-            continue
-        pw = os.environ.get("ADMIN_PASSWORD", "admin123") if u["email"] == "admin@studio.com" else u["password"]
-        doc = {"id": new_id(), **u, "password_hash": hash_password(pw),
-               "created_at": now_utc().isoformat()}
-        doc.pop("password")
-        await db.users.insert_one(doc)
-
-    log.info("Seed complete (login accounts only).")
+    log.info("Indexes ensured. No seed users — first user is created via /auth/signup.")
 
 
 @app.on_event("startup")
