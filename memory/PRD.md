@@ -30,7 +30,34 @@ Build a project management for a design agency with team (regular team member, m
 - Frontend: React 19 + React Router 7 + Tailwind + Shadcn primitives + lucide-react
 - Fonts: Cabinet Grotesk (display) + General Sans (body) via Fontshare CDN
 
-## P1/P2 backlog (next phases)
+## Phase 3 (delivered)
+- New default landing **Home** page: my open tasks, this-week events, my projects, plus a "Log time off" action
+- Calendar events are now clickable → open a populated EventFormModal (edit/delete)
+- Recurring events have a frequency dropdown: daily / weekly / bi-weekly / monthly / yearly
+- Tasks page:
+  - "Only my tasks" toggle, default **ON**
+  - Subtasks (create + list + delete) inside the task drawer
+  - Both Original deadline and Latest deadline / Completion date as separate fields
+  - Task category (free-text with autocomplete from existing categories) + category column + filter
+- Timesheets: removed "business days" helper text
+- Projects:
+  - Type labels: Billable Project / Billable Account / Non-Billable Project
+  - Status labels: Pitch / Upcoming / Ongoing / Complete / Hold / Cancelled (with colors)
+  - Full Edit Project modal — every field editable
+  - Owner / Manager role tags on team members (multi-person allowed for each)
+  - Inside Project Detail: Add Task / Add Event buttons, click events to edit, Client Contacts shown under Team
+- New shared **GanttTimeline** component:
+  - Cleaner header (month band + day band, weekend tint)
+  - Vertical "today" line + dedicated **Today** recenter button
+  - Drag bar BODY = MOVE only (no expand) — fixed the move-vs-expand bug
+  - Drag BOTH left and right edges to resize (anchored opposite edge)
+  - Used on Projects gantt, Project Detail task gantt, Dashboard project timeline
+- Team page rebuilt:
+  - Columns trimmed to Member / Team / Title / Status
+  - Row click → side panel with Joined / Birthday / Projects / Leaves / stats
+  - Edit pencil opens a Member edit modal (full field editing)
+
+## P2/P3 backlog (next phases)
 - File attachments on tasks/projects (object storage)
 - Email notifications integration (Resend/SendGrid) layered onto in-app notif system
 - Real-time push via SSE or websocket (currently 20s polling for notifications)
